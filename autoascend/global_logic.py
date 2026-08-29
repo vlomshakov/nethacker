@@ -575,16 +575,6 @@ class GlobalLogic:
                     ])
                 )
 
-            @Strategy.wrap
-            def recover_hitpoints():
-                # hypothesis: fragile builds lose progression because their low-HP recovery explores new terrain and meets the next monster before regenerating.
-                if self.agent.blstats.hitpoints >= 0.8 * self.agent.blstats.max_hitpoints or \
-                        self.agent.blstats.hunger_state >= Hunger.HUNGRY:
-                    yield False
-                    return
-                yield True
-                self.agent.search()
-
             def go_to_strategy(y, x):
                 return (
                     exploration_strategy(None)
@@ -606,7 +596,8 @@ class GlobalLogic:
                 .before(exploration_strategy(None))#.before(self.agent.exploration.patrol())
                 .preempt(self.agent, [
                     exploration_strategy(0),
-                    recover_hitpoints(),
+                    exploration_strategy(None).until(
+                        self.agent, lambda: self.agent.blstats.hitpoints >= 0.8 * self.agent.blstats.max_hitpoints)
                 ])
                 .preempt(self.agent, [
                     self.agent.exploration.explore_stairs(go_to_strategy, all=True).condition(explore_stairs_condition),
