@@ -515,10 +515,14 @@ class GlobalLogic:
         while 1:
             explore_stairs_condition = lambda: False
             if self.milestone == Milestone.BE_ON_FIRST_LEVEL:
-                condition = lambda: self.agent.blstats.experience_level >= 8
-                # hypothesis: hungry agents with no carried nutrition should leave the level-one XP farm before starving, while provisioned agents retain its safety benefit
-                explore_stairs_condition = lambda: self.agent.inventory.items.total_nutrition() == 0 and \
-                                                   self.agent.blstats.hunger_state >= Hunger.NOT_HUNGRY
+                # hypothesis: fragile ranged/support roles should leave the depleted level-one
+                # farm at XP 6 for food and gear, while durable monks can safely farm to XP 8.
+                first_level_target = 6 if self.agent.character.role in (
+                    Character.TOURIST, Character.PRIEST, Character.RANGER
+                ) else 8
+                condition = lambda: self.agent.blstats.experience_level >= first_level_target
+                # explore_stairs_condition = lambda: self.agent.inventory.items.total_nutrition() == 0 and \
+                #                                    self.agent.blstats.hunger_state >= Hunger.NOT_HUNGRY
                 level = (Level.DUNGEONS_OF_DOOM, 1)
 
             elif self.milestone == Milestone.FIND_SOKOBAN:
