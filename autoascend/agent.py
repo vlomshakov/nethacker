@@ -1196,6 +1196,14 @@ class Agent:
             self.stats_logger.log_event('wait_in_fight')
             self.search()
             return wait_counter
+        elif best_action[0] == 'camera':
+            _, dy, dx, camera = best_action
+            with self.atom_operation():
+                self.step(A.Command.APPLY)
+                self.step(self.inventory.items.get_letter(camera))
+                self.direction(self.calc_direction(self.blstats.y, self.blstats.x,
+                                                   self.blstats.y + dy, self.blstats.x + dx))
+            return wait_counter
         elif best_action[0] == 'zap':
             if len(best_action) == 5:
                 _, dy, dx, wand, targeted_monsters = best_action
@@ -1302,8 +1310,8 @@ class Agent:
         if permonst.mflags2 & race_flag:
             return False
 
-        # hypothesis: corpses accepted just before age 50 can rot during the multi-turn eating action, poisoning otherwise healthy fragile builds
-        if self.blstats.time - age_turn >= 40 and \
+        # corpse aging
+        if self.blstats.time - age_turn >= 50 and \
                 monster_id not in [MON.id_from_name('lizard'), MON.id_from_name('lichen')]:
             return False
 
