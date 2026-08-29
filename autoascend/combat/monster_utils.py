@@ -31,6 +31,4 @@ def is_dangerous_monster(monster):
 
 
 def consider_melee_only_ranged_if_hp_full(agent, monster):
-    # hypothesis: fragile builds gain nothing by spending HP on a stationary brown mold's cold retaliation;
-    # ignoring it when no projectile is available prevents avoidable early deaths without blocking exploration.
-    return monster[3].mname == 'blue jelly' and agent.blstats.hitpoints == agent.blstats.max_hitpoints
+    return monster[3].mname in ('brown mold', 'blue jelly') and agent.blstats.hitpoints == agent.blstats.max_hitpoints
