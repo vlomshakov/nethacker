@@ -1196,14 +1196,6 @@ class Agent:
             self.stats_logger.log_event('wait_in_fight')
             self.search()
             return wait_counter
-        elif best_action[0] == 'camera':
-            _, dy, dx, camera = best_action
-            with self.atom_operation():
-                self.step(A.Command.APPLY)
-                self.step(self.inventory.items.get_letter(camera))
-                self.direction(self.calc_direction(self.blstats.y, self.blstats.x,
-                                                   self.blstats.y + dy, self.blstats.x + dx))
-            return wait_counter
         elif best_action[0] == 'zap':
             if len(best_action) == 5:
                 _, dy, dx, wand, targeted_monsters = best_action

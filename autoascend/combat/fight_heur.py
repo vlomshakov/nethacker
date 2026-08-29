@@ -237,21 +237,6 @@ def wait_action(agent, monsters):
 def get_available_actions(agent, monsters):
     actions = []
 
-    # hypothesis: the tourist's otherwise-unused camera can prevent its low-HP
-    # early deaths by blinding an adjacent attacker before another melee trade.
-    if agent.character.role == agent.character.TOURIST and agent.blstats.hitpoints <= 8:
-        camera = next((item for item in agent.inventory.items.all_items
-                       if item.is_unambiguous() and item.objs[0].name == 'expensive camera'
-                       and item.uses != 'no charges'), None)
-        if camera is not None:
-            camera_targets = [monster for monster in monsters
-                              if adjacent((monster[1], monster[2]),
-                                          (agent.blstats.y, agent.blstats.x))
-                              and monster[3].mname not in WEAK_MONSTERS + ONLY_RANGED_SLOW_MONSTERS]
-            if camera_targets:
-                _, y, x, _, _ = camera_targets[0]
-                actions.append((18, ('camera', y - agent.blstats.y, x - agent.blstats.x, camera)))
-
     # melee attack actions
     for monster in monsters:
         _, y, x, mon, _ = monster
