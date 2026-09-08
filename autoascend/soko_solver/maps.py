@@ -951,3 +951,12 @@ maps = {'''\
                                      ((1, 13), (0, 1)), ((1, 14), (0, 1)), ((1, 15), (0, 1)), ((1, 16), (0, 1)),
                                      ((1, 17), (0, 1)), ((1, 18), (0, 1)), ((1, 19), (0, 1)), ((1, 20), (0, 1)),
                                      ((1, 21), (0, 1)), ((1, 22), (0, 1))], }
+
+
+# hypothesis: removing source indentation aligns Sokoban maps with their push
+# coordinates, preventing solver crashes and allowing progression past Sokoban.
+# The four-column prefix is formatting; additional spaces belong to the maps.
+maps = {
+    '\n'.join(line[4:] for line in layout.splitlines()): solution
+    for layout, solution in maps.items()
+}
