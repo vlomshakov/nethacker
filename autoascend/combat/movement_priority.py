@@ -125,7 +125,11 @@ def draw_monster_priority_negative(agent, monster, priority, walkable):
         # ignore
         pass
     elif 'unicorn' in mon.mname:
-        pass
+        if agent.blstats.hitpoints < 15 and agent.blstats.hitpoints != agent.blstats.max_hitpoints:
+            _draw_around(priority, y, x, -10, radius=1)
+            _draw_around(priority, y, x, -5, radius=2)
+        if len(agent.inventory.get_ranged_combinations()):
+            _draw_ranged(priority, y, x, 6, walkable, radius=7)
     else:
         if mon.mname not in WEAK_MONSTERS:
             # engage, but ensure striking first if possible
