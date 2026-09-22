@@ -516,11 +516,8 @@ class GlobalLogic:
             explore_stairs_condition = lambda: False
             if self.milestone == Milestone.BE_ON_FIRST_LEVEL:
                 condition = lambda: self.agent.blstats.experience_level >= 8
-                # hypothesis: once carried food is gone and the character is
-                # weak and established (XP 6+), leave before starvation ends the run.
-                explore_stairs_condition = lambda: self.agent.inventory.items.total_nutrition() == 0 and \
-                                                   self.agent.blstats.experience_level >= 6 and \
-                                                   self.agent.blstats.hunger_state >= Hunger.WEAK
+                # explore_stairs_condition = lambda: self.agent.inventory.items.total_nutrition() == 0 and \
+                #                                    self.agent.blstats.hunger_state >= Hunger.NOT_HUNGRY
                 level = (Level.DUNGEONS_OF_DOOM, 1)
 
             elif self.milestone == Milestone.FIND_SOKOBAN:

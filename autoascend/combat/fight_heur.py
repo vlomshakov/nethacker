@@ -15,8 +15,9 @@ from .utils import wielding_ranged_weapon, line_dis_from, inside
 def melee_monster_priority(agent, monsters, monster):
     _, y, x, mon, _ = monster
     ret = 1
-    # hypothesis: let the fragile healer retreat from fast monsters while low
-    # on HP, without changing the established combat policy for other roles.
+    # hypothesis: make emergency combat favor survival by disengaging injured
+    # healers from fast threats, avoiding injured unicorn melee, and reserving
+    # identified sleep wands for low-HP emergencies.
     fragile_healer = agent.character.role == agent.character.HEALER and agent.blstats.hitpoints <= 12
     if (agent.blstats.hitpoints > 8 or is_monster_faster(agent, monster)) and \
             not (fragile_healer and is_monster_faster(agent, monster)):
@@ -25,8 +26,6 @@ def melee_monster_priority(agent, monsters, monster):
         ret -= 6
     if mon.mname in EXPLODING_MONSTERS:
         ret -= 17
-    # hypothesis: honor the movement policy's healthy-only unicorn melee rule
-    # so unicorns are not selected as targets after HP drops below 15.
     if 'unicorn' in mon.mname and agent.blstats.hitpoints < 15 and \
             agent.blstats.hitpoints != agent.blstats.max_hitpoints:
         ret -= 100
