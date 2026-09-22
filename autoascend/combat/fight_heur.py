@@ -176,6 +176,9 @@ def get_potential_wand_usages(agent, monsters, dy, dx):
         targeted_monsters = set()
         if not item.is_offensive_usable_wand():
             continue
+        if item.objs[0].name == 'sleep' and \
+                agent.blstats.hitpoints * 2 > agent.blstats.max_hitpoints:
+            continue
         priority = 0
         # print('--------------', dy, dx)
         for y, x, monster, p in simulate_wand_path(agent, item, monsters, dy, dx):
