@@ -15,11 +15,7 @@ from .utils import wielding_ranged_weapon, line_dis_from, inside
 def melee_monster_priority(agent, monsters, monster):
     _, y, x, mon, _ = monster
     ret = 1
-    # hypothesis: let the fragile healer retreat from fast monsters while low
-    # on HP, without changing the established combat policy for other roles.
-    fragile_healer = agent.character.role == agent.character.HEALER and agent.blstats.hitpoints <= 12
-    if (agent.blstats.hitpoints > 8 or is_monster_faster(agent, monster)) and \
-            not (fragile_healer and is_monster_faster(agent, monster)):
+    if agent.blstats.hitpoints > 8 or is_monster_faster(agent, monster):
         ret += 15
     if wielding_ranged_weapon(agent) and not is_monster_faster(agent, monster):
         ret -= 6
@@ -175,9 +171,6 @@ def get_potential_wand_usages(agent, monsters, dy, dx):
     for item in agent.inventory.items:
         targeted_monsters = set()
         if not item.is_offensive_usable_wand():
-            continue
-        if item.objs[0].name == 'sleep' and \
-                agent.blstats.hitpoints * 2 > agent.blstats.max_hitpoints:
             continue
         priority = 0
         # print('--------------', dy, dx)

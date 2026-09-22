@@ -218,7 +218,8 @@ class Item:
         if self.uses == 'no charges':
             # TODO: is it right ?
             return False
-        # hypothesis: retain identified sleep wands for emergency combat use.
+        if self.objs[0] == O.from_name('sleep', nh.WAND_CLASS):
+            return False
         if self.objs[0] == O.from_name('digging', nh.WAND_CLASS):
             return False
         return True
