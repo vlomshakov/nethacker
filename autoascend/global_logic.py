@@ -515,7 +515,9 @@ class GlobalLogic:
         while 1:
             explore_stairs_condition = lambda: False
             if self.milestone == Milestone.BE_ON_FIRST_LEVEL:
-                condition = lambda: self.agent.blstats.experience_level >= 8
+                # hypothesis: leaving the first-floor grind at XP 7 banks any depth progress
+                # before more level-1 encounters can kill the run, while preserving XP 7 itself.
+                condition = lambda: self.agent.blstats.experience_level >= 7
                 # explore_stairs_condition = lambda: self.agent.inventory.items.total_nutrition() == 0 and \
                 #                                    self.agent.blstats.hunger_state >= Hunger.NOT_HUNGRY
                 level = (Level.DUNGEONS_OF_DOOM, 1)
