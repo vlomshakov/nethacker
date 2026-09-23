@@ -6,7 +6,7 @@ from scipy import signal
 
 from ..glyph import G
 from ..utils import adjacent
-from .monster_utils import is_monster_faster, is_dangerous_monster, imminent_death_on_melee, \
+from .monster_utils import is_monster_faster, is_dangerous_monster, \
     ONLY_RANGED_SLOW_MONSTERS, EXPLODING_MONSTERS, WEAK_MONSTERS, consider_melee_only_ranged_if_hp_full
 from .movement_priority import draw_monster_priority_positive, draw_monster_priority_negative
 from .utils import wielding_ranged_weapon, line_dis_from, inside
@@ -15,8 +15,9 @@ from .utils import wielding_ranged_weapon, line_dis_from, inside
 def melee_monster_priority(agent, monsters, monster):
     _, y, x, mon, _ = monster
     ret = 1
-    # Keep the melee action priority aligned with the difficulty-based risk threshold.
-    if not imminent_death_on_melee(agent, monster):
+    # hypothesis: at critical health, don't let a fast monster's speed bonus
+    # force a melee trade when escape or another defensive action may keep us alive.
+    if agent.blstats.hitpoints > 8:
         ret += 15
     if wielding_ranged_weapon(agent) and not is_monster_faster(agent, monster):
         ret -= 6
@@ -44,6 +45,15 @@ def melee_monster_priority(agent, monsters, monster):
                     return ret
             agent.stats_logger.log_event('melee_gas_spore')
             return 1  # a priority higher than random moving around
+
+    adjacent_threats = sum(
+        adjacent((agent.blstats.y, agent.blstats.x), (m[1], m[2])) and
+        m[3].mname not in WEAK_MONSTERS + ONLY_RANGED_SLOW_MONSTERS
+        for m in monsters
+    )
+    if agent.blstats.hitpoints <= max(8, agent.blstats.max_hitpoints / 3) and adjacent_threats >= 2:
+        # hypothesis: escaping a surround at low HP avoids taking repeated hits from several foes at once.
+        ret -= 20
 
     return ret
 
