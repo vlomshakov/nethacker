@@ -15,7 +15,9 @@ from .utils import wielding_ranged_weapon, line_dis_from, inside
 def melee_monster_priority(agent, monsters, monster):
     _, y, x, mon, _ = monster
     ret = 1
-    if agent.blstats.hitpoints > 8 or is_monster_faster(agent, monster):
+    # hypothesis: at critical health, don't let a fast monster's speed bonus
+    # force a melee trade when escape or another defensive action may keep us alive.
+    if agent.blstats.hitpoints > 8:
         ret += 15
     if wielding_ranged_weapon(agent) and not is_monster_faster(agent, monster):
         ret -= 6
