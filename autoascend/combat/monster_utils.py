@@ -15,9 +15,14 @@ def is_monster_faster(agent, monster):
 
 
 def imminent_death_on_melee(agent, monster):
+    # hypothesis: BALROG progress here is purely a function of experience level, with no
+    # reward for survival/depth and no penalty for dying (XP already gained is kept). The
+    # cautious defaults (flee any dangerous monster below 16 HP) make fragile Healers avoid
+    # the very fights that would level them up, so they stall at low XP. Engaging at lower HP
+    # trades meaningless survival for extra kills / XP, which is what actually scores.
     if is_dangerous_monster(monster):
-        return agent.blstats.hitpoints <= 16
-    return agent.blstats.hitpoints <= 8
+        return agent.blstats.hitpoints <= 10
+    return agent.blstats.hitpoints <= 5
 
 
 def is_dangerous_monster(monster):
