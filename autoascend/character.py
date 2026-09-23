@@ -379,7 +379,12 @@ class Character:
 
     def select_skill_to_upgrade(self):
         assert self.upgradable_skills
-        # TODO: logic
+        # hypothesis: improving the best currently usable melee weapon's skill gives more reliable
+        # combat gains across roles than taking whichever enhancement appears first in the menu.
+        weapon = self.agent.inventory.get_best_melee_weapon()
+        skill = O.P_BARE_HANDED_COMBAT if weapon is None else abs(weapon.objs[0].sub)
+        if skill in self.upgradable_skills:
+            return skill
         return next(iter(self.upgradable_skills.keys()))
 
     def _parse_enhance_view(self):
