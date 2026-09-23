@@ -15,9 +15,12 @@ def is_monster_faster(agent, monster):
 
 
 def imminent_death_on_melee(agent, monster):
+    _, _, _, mon, _ = monster
+    # hypothesis: scale melee avoidance to NLE's monster difficulty so dangerous trades are avoided before HP is critical.
+    threshold = max(8, min(16, 4 + 2 * getattr(mon, 'difficulty', 0)))
     if is_dangerous_monster(monster):
-        return agent.blstats.hitpoints <= 16
-    return agent.blstats.hitpoints <= 8
+        threshold = max(threshold, 16)
+    return agent.blstats.hitpoints <= threshold
 
 
 def is_dangerous_monster(monster):
