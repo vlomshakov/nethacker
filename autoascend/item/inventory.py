@@ -1163,12 +1163,20 @@ class Inventory:
     def wear_best_stuff(self):
         yielded = False
         while 1:
-            best_armorset = self.get_best_armorset()
+            # hypothesis: higher-AC armor with unknown beatitude improves defense across roles.
+            best_armorset = self.get_best_armorset(allow_unknown_status=True)
+            known_armorset = self.get_best_armorset()
 
             # TODO: twoweapon
             for slot, name in [(O.ARM_SHIELD, 'off_hand'), (O.ARM_HELM, 'helm'), (O.ARM_GLOVES, 'gloves'),
                                (O.ARM_BOOTS, 'boots'), (O.ARM_SHIRT, 'shirt'), (O.ARM_SUIT, 'suit'),
                                (O.ARM_CLOAK, 'cloak')]:
+                candidate = best_armorset[slot]
+                if candidate is not None and candidate.status == Item.UNKNOWN and \
+                        candidate.object.name in ('gauntlets of fumbling', 'fumble boots',
+                                                  'helm of opposite alignment', 'levitation boots'):
+                    best_armorset[slot] = known_armorset[slot]
+
                 if best_armorset[slot] == getattr(self.items, name) or \
                         (getattr(self.items, name) is not None and getattr(self.items, name).status == Item.CURSED):
                     continue
