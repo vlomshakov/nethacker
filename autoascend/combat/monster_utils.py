@@ -15,17 +15,12 @@ def is_monster_faster(agent, monster):
 
 
 def imminent_death_on_melee(agent, monster):
-    # hypothesis: using monster level and speed to estimate melee risk lets all
-    # roles disengage before strong or fast threats can land repeated attacks.
-    mon = monster[3]
-    monster_level = getattr(mon, 'mlevel', 1)
-    monster_speed = getattr(mon, 'mmove', 12)
-    hp_limit = max(8, 5 + 3 * monster_level)
-    if monster_speed >= 18:
-        hp_limit += 3
+    _, _, _, mon, _ = monster
+    # hypothesis: scale melee avoidance to NLE's monster difficulty so dangerous trades are avoided before HP is critical.
+    threshold = max(8, min(16, 4 + 2 * getattr(mon, 'difficulty', 0)))
     if is_dangerous_monster(monster):
-        hp_limit = max(hp_limit, 16)
-    return agent.blstats.hitpoints <= hp_limit
+        threshold = max(threshold, 16)
+    return agent.blstats.hitpoints <= threshold
 
 
 def is_dangerous_monster(monster):

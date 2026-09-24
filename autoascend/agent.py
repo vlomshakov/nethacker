@@ -1416,9 +1416,14 @@ class Agent:
 
         items = [item for item in flatten_items(self.inventory.items) if item.is_unambiguous() and
                  item.category == nh.POTION_CLASS and item.object.name in ['healing', 'extra healing', 'full healing']]
+        # hypothesis: using known healing potions at half health when a monster is
+        # within three steps prevents combat deaths across all roles.
+        nearby_threat = False
+        if items and self.blstats.hitpoints < self.blstats.max_hitpoints / 2:
+            nearby_threat = any(dis <= 3 for dis, *_ in self.get_visible_monsters())
+        potion_hp_threshold = self.blstats.max_hitpoints / (2 if nearby_threat else 3)
         if (
-                (self.blstats.hitpoints < 1 / 3 * self.blstats.max_hitpoints
-                 or self.blstats.hitpoints < 8) and items
+                (self.blstats.hitpoints < potion_hp_threshold or self.blstats.hitpoints < 8) and items
         ):
             yield True
             self.inventory.quaff(items[0])
@@ -1431,17 +1436,10 @@ class Agent:
             self.inventory.quaff(items[0])
             return
 
-        # hypothesis: using a safe prayer below one-third health when no monster
-        # is visible gives every role a full recovery without inviting an attack.
-        safe_to_pray = self.is_safe_to_pray(500)
-        safe_recovery = False
-        if safe_to_pray and self.blstats.hitpoints < self.blstats.max_hitpoints / 3:
-            safe_recovery = not self.get_visible_monsters()
         if (
-                (safe_to_pray and
-                 (safe_recovery or self.blstats.hitpoints < 1 / (5 if self.blstats.experience_level < 6 else 6)
-                  * self.blstats.max_hitpoints or self.blstats.hitpoints < 6
-                  or (self.character.race == Character.ORC and self.blstats.hitpoints <= 8)))
+                (self.is_safe_to_pray(500) and
+                 (self.blstats.hitpoints < 1 / (5 if self.blstats.experience_level < 6 else 6)
+                  * self.blstats.max_hitpoints or self.blstats.hitpoints < 6))
                 or (self.is_safe_to_pray(400) and self.blstats.hunger_state >= Hunger.FAINTING)
         ):
             yield True
