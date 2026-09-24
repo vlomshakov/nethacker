@@ -516,11 +516,8 @@ class GlobalLogic:
             explore_stairs_condition = lambda: False
             if self.milestone == Milestone.BE_ON_FIRST_LEVEL:
                 condition = lambda: self.agent.blstats.experience_level >= 8
-                # hypothesis: an XP3+ tourist should leave the level-one farm on first becoming hungry,
-                # because a long exploration action can otherwise run through WEAK to starvation before preemption.
-                explore_stairs_condition = lambda: self.agent.character.role == Character.TOURIST and \
-                    self.agent.blstats.experience_level >= 3 and \
-                    self.agent.blstats.hunger_state >= Hunger.HUNGRY
+                # explore_stairs_condition = lambda: self.agent.inventory.items.total_nutrition() == 0 and \
+                #                                    self.agent.blstats.hunger_state >= Hunger.NOT_HUNGRY
                 level = (Level.DUNGEONS_OF_DOOM, 1)
 
             elif self.milestone == Milestone.FIND_SOKOBAN:

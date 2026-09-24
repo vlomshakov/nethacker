@@ -221,6 +221,11 @@ def elbereth_action(agent, monsters):
             adj_monsters_count += 2 * multiplier
 
     player_hp_ratio = (agent.blstats.hitpoints / agent.blstats.max_hitpoints) ** 0.5
+    # hypothesis: making Elbereth a decisive last resort at critical HP will
+    # prevent low-health rogues from taking a final, usually fatal melee turn.
+    critical_hp = max(6, agent.blstats.max_hitpoints / 3)
+    if agent.blstats.hitpoints <= critical_hp and adj_monsters_count > 0:
+        return [(100, ('elbereth',))]
     if agent.blstats.hitpoints < 30 and adj_monsters_count > 0:
         return [(-15 + 20 * adj_monsters_count * (1 - player_hp_ratio), ('elbereth',))]
     return []

@@ -1431,10 +1431,17 @@ class Agent:
             self.inventory.quaff(items[0])
             return
 
+        # hypothesis: using a safe prayer below one-third health when no monster
+        # is visible gives every role a full recovery without inviting an attack.
+        safe_to_pray = self.is_safe_to_pray(500)
+        safe_recovery = False
+        if safe_to_pray and self.blstats.hitpoints < self.blstats.max_hitpoints / 3:
+            safe_recovery = not self.get_visible_monsters()
         if (
-                (self.is_safe_to_pray(500) and
-                 (self.blstats.hitpoints < 1 / (5 if self.blstats.experience_level < 6 else 6)
-                  * self.blstats.max_hitpoints or self.blstats.hitpoints < 6))
+                (safe_to_pray and
+                 (safe_recovery or self.blstats.hitpoints < 1 / (5 if self.blstats.experience_level < 6 else 6)
+                  * self.blstats.max_hitpoints or self.blstats.hitpoints < 6
+                  or (self.character.race == Character.ORC and self.blstats.hitpoints <= 8)))
                 or (self.is_safe_to_pray(400) and self.blstats.hunger_state >= Hunger.FAINTING)
         ):
             yield True
