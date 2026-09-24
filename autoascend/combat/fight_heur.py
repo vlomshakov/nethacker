@@ -214,8 +214,9 @@ def elbereth_action(agent, monsters):
         multiplier = np.clip(20 / agent.blstats.hitpoints, 1.0, 1.5)
         if is_monster_faster(agent, monster):
             multiplier *= 2
-        if mon in WEAK_MONSTERS:
-            adj_monsters_count += 0.1 * multiplier
+        # hypothesis: ignoring weak monsters when scoring Elbereth avoids
+        # wasting defensive turns on harmless adjacent targets for all roles.
+        if mon.mname in WEAK_MONSTERS:
             continue
         adj_monsters_count += 1 * multiplier
         if is_dangerous_monster(monster):
