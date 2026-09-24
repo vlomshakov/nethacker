@@ -6,7 +6,7 @@ from scipy import signal
 
 from ..glyph import G
 from ..utils import adjacent
-from .monster_utils import is_monster_faster, is_dangerous_monster, imminent_death_on_melee, \
+from .monster_utils import is_monster_faster, is_dangerous_monster, \
     ONLY_RANGED_SLOW_MONSTERS, EXPLODING_MONSTERS, WEAK_MONSTERS, consider_melee_only_ranged_if_hp_full
 from .movement_priority import draw_monster_priority_positive, draw_monster_priority_negative
 from .utils import wielding_ranged_weapon, line_dis_from, inside
@@ -15,8 +15,7 @@ from .utils import wielding_ranged_weapon, line_dis_from, inside
 def melee_monster_priority(agent, monsters, monster):
     _, y, x, mon, _ = monster
     ret = 1
-    # Keep the melee action priority aligned with the difficulty-based risk threshold.
-    if not imminent_death_on_melee(agent, monster):
+    if agent.blstats.hitpoints > 8 or is_monster_faster(agent, monster):
         ret += 15
     if wielding_ranged_weapon(agent) and not is_monster_faster(agent, monster):
         ret -= 6
@@ -214,8 +213,7 @@ def elbereth_action(agent, monsters):
         multiplier = np.clip(20 / agent.blstats.hitpoints, 1.0, 1.5)
         if is_monster_faster(agent, monster):
             multiplier *= 2
-        # hypothesis: recognizing weak monsters avoids overvaluing defensive engraving across roles.
-        if mon.mname in WEAK_MONSTERS:
+        if mon in WEAK_MONSTERS:
             adj_monsters_count += 0.1 * multiplier
             continue
         adj_monsters_count += 1 * multiplier
@@ -223,6 +221,11 @@ def elbereth_action(agent, monsters):
             adj_monsters_count += 2 * multiplier
 
     player_hp_ratio = (agent.blstats.hitpoints / agent.blstats.max_hitpoints) ** 0.5
+    # hypothesis: making Elbereth a decisive last resort at critical HP will
+    # prevent low-health rogues from taking a final, usually fatal melee turn.
+    critical_hp = max(6, agent.blstats.max_hitpoints / 3)
+    if agent.blstats.hitpoints <= critical_hp and adj_monsters_count > 0:
+        return [(100, ('elbereth',))]
     if agent.blstats.hitpoints < 30 and adj_monsters_count > 0:
         return [(-15 + 20 * adj_monsters_count * (1 - player_hp_ratio), ('elbereth',))]
     return []

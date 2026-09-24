@@ -509,14 +509,32 @@ class GlobalLogic:
 
         self.agent.go_to(y, x, stop_one_before=True)
 
+    @utils.debug_log('rest_while_wounded')
+    @Strategy.wrap
+    def rest_while_wounded(self):
+        agent = self.agent
+
+        def nearby_monster():
+            return any(distance <= 7 for distance, *_ in agent.get_visible_monsters())
+
+        recovery_threshold = max(8, agent.blstats.max_hitpoints / 3)
+        if agent.blstats.hitpoints >= recovery_threshold or agent.blstats.hunger_state >= Hunger.HUNGRY \
+                or nearby_monster():
+            yield False
+
+        # hypothesis: resting in a clear area to recover avoids extra fights while wounded across roles.
+        yield True
+        while agent.blstats.hitpoints < 0.8 * agent.blstats.max_hitpoints \
+                and agent.blstats.hunger_state < Hunger.HUNGRY and not nearby_monster():
+            agent.search()
+
     @Strategy.wrap
     def current_strategy(self):
         yield True
         while 1:
             explore_stairs_condition = lambda: False
             if self.milestone == Milestone.BE_ON_FIRST_LEVEL:
-                # hypothesis: gain extra health on the safer first level before entering deeper floors.
-                condition = lambda: self.agent.blstats.experience_level >= 10
+                condition = lambda: self.agent.blstats.experience_level >= 8
                 # explore_stairs_condition = lambda: self.agent.inventory.items.total_nutrition() == 0 and \
                 #                                    self.agent.blstats.hunger_state >= Hunger.NOT_HUNGRY
                 level = (Level.DUNGEONS_OF_DOOM, 1)
@@ -641,5 +659,8 @@ class GlobalLogic:
             ])
             .preempt(self.agent, [
                 self.agent.emergency_strategy(),
+            ])
+            .preempt(self.agent, [
+                self.rest_while_wounded(),
             ])
         )
