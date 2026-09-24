@@ -15,9 +15,17 @@ def is_monster_faster(agent, monster):
 
 
 def imminent_death_on_melee(agent, monster):
+    # hypothesis: using monster level and speed to estimate melee risk lets all
+    # roles disengage before strong or fast threats can land repeated attacks.
+    mon = monster[3]
+    monster_level = getattr(mon, 'mlevel', 1)
+    monster_speed = getattr(mon, 'mmove', 12)
+    hp_limit = max(8, 5 + 3 * monster_level)
+    if monster_speed >= 18:
+        hp_limit += 3
     if is_dangerous_monster(monster):
-        return agent.blstats.hitpoints <= 16
-    return agent.blstats.hitpoints <= 8
+        hp_limit = max(hp_limit, 16)
+    return agent.blstats.hitpoints <= hp_limit
 
 
 def is_dangerous_monster(monster):

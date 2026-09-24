@@ -1426,23 +1426,23 @@ class Agent:
 
         items = [item for item in flatten_items(self.inventory.items) if item.is_unambiguous() and
                  item.category == nh.POTION_CLASS and item.object.name in ['fruit juice']]
-        # hypothesis: use juice or a ready prayer at Weak when no food is carried,
-        # reducing starvation deaths across roles.
-        if (items and self.blstats.hunger_state >= Hunger.WEAK and
-                self.inventory.items.total_nutrition() == 0):
+        if items and self.blstats.hunger_state >= Hunger.FAINTING:
             yield True
             self.inventory.quaff(items[0])
             return
 
-        # hypothesis: orc rogues need an 8-HP prayer margin because routine melee
-        # damage frequently skips the generic below-6-HP emergency window.
+        # hypothesis: using a safe prayer below one-third health when no monster
+        # is visible gives every role a full recovery without inviting an attack.
+        safe_to_pray = self.is_safe_to_pray(500)
+        safe_recovery = False
+        if safe_to_pray and self.blstats.hitpoints < self.blstats.max_hitpoints / 3:
+            safe_recovery = not self.get_visible_monsters()
         if (
-                (self.is_safe_to_pray(500) and
-                 (self.blstats.hitpoints < 1 / (5 if self.blstats.experience_level < 6 else 6)
+                (safe_to_pray and
+                 (safe_recovery or self.blstats.hitpoints < 1 / (5 if self.blstats.experience_level < 6 else 6)
                   * self.blstats.max_hitpoints or self.blstats.hitpoints < 6
                   or (self.character.race == Character.ORC and self.blstats.hitpoints <= 8)))
-                or (self.is_safe_to_pray(500) and self.blstats.hunger_state >= Hunger.WEAK
-                    and self.inventory.items.total_nutrition() == 0)
+                or (self.is_safe_to_pray(400) and self.blstats.hunger_state >= Hunger.FAINTING)
         ):
             yield True
             self.pray()
