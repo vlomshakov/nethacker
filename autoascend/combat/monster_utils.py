@@ -15,12 +15,9 @@ def is_monster_faster(agent, monster):
 
 
 def imminent_death_on_melee(agent, monster):
-    # hypothesis: retreating below one-third HP gives all roles a larger buffer
-    # against ordinary enemies instead of waiting for the fixed 8-HP cutoff.
-    scaled_hp_limit = agent.blstats.max_hitpoints / 3
     if is_dangerous_monster(monster):
-        return agent.blstats.hitpoints <= max(16, scaled_hp_limit)
-    return agent.blstats.hitpoints <= max(8, scaled_hp_limit)
+        return agent.blstats.hitpoints <= 16
+    return agent.blstats.hitpoints <= 8
 
 
 def is_dangerous_monster(monster):
