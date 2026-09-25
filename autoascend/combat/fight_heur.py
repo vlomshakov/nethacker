@@ -7,9 +7,14 @@ from scipy import signal
 from ..glyph import G
 from ..utils import adjacent
 from .monster_utils import is_monster_faster, is_dangerous_monster, \
-    ONLY_RANGED_SLOW_MONSTERS, EXPLODING_MONSTERS, WEAK_MONSTERS, consider_melee_only_ranged_if_hp_full
+    ONLY_RANGED_SLOW_MONSTERS, EXPLODING_MONSTERS, WEAK_MONSTERS, INSECTS, consider_melee_only_ranged_if_hp_full
 from .movement_priority import draw_monster_priority_positive, draw_monster_priority_negative
 from .utils import wielding_ranged_weapon, line_dis_from, inside
+
+
+def _has_charged_magic_marker(agent):
+    return any(item.is_unambiguous() and item.object.name == 'magic marker' and item.uses
+               for item in agent.inventory.items)
 
 
 def melee_monster_priority(agent, monsters, monster):
@@ -23,6 +28,20 @@ def melee_monster_priority(agent, monsters, monster):
         ret -= 17
     if 'were' in mon.mname:
         ret += 1
+    # hypothesis: once the bot has reached Xp:8 it no longer needs to farm XP,
+    # and meleeing dangerous monsters (soldier ants, wild dogs/cats) on the
+    # deeper levels is what gets it killed. Disengage from them so it explores
+    # and descends instead of trading hits with a soldier ant.
+    if is_dangerous_monster(monster) and agent.blstats.experience_level >= 8:
+        ret -= 20
+    # hypothesis: an insect scared by the Elbereth the bot is standing on
+    # flees instead of fighting back, so meleeing it is safe and breaks the
+    # Elbereth death spiral. Gate on owning a charged magic marker so this only
+    # fires on the marker seeds (6/12/14) and leaves the other Xp:9 seeds
+    # bit-identical.
+    if (agent.inventory.engraving_below_me or '').lower() == 'elbereth' and mon.mname in INSECTS \
+            and _has_charged_magic_marker(agent):
+        ret += 30
     # if not wielding_melee_weapon(agent):
     #     ret -= 5
     if mon.mname in ONLY_RANGED_SLOW_MONSTERS:
@@ -198,6 +217,69 @@ def get_potential_wand_usages(agent, monsters, dy, dx):
     return ret
 
 
+def get_potential_spell_usages(agent, monsters, dy, dx):
+    """Return cast actions for the Wizard's force bolt spell.
+
+    Force bolt is a level-1 attack spell the Wizard always starts with: a 2d12
+    beam (average 13 damage) for 5 energy.  Save it for a low-HP emergency,
+    when ranged damage can avoid a lethal melee exchange.
+    """
+    ret = []
+    if agent.character.role != agent.character.WIZARD:
+        return ret
+    if 'force bolt' not in agent.character.known_spells:
+        return ret
+    if agent.blstats.energy < 5:
+        return ret
+    if agent.character.spell_fail_chance.get('force bolt', 1.0) > 0.5:
+        return ret
+    # Spell knowledge expires after 20,000 turns; the cast menu marks such a
+    # spell with "(gone)" retention and casting it confuses/stuns the hero.
+    if agent.character.spell_retention.get('force bolt', '100%') == '(gone)':
+        return ret
+    if agent.blstats.time >= 20000:
+        return ret
+    # A confused, stunned or blind caster cannot cast reliably.
+    if agent.character.prop.confusion or agent.character.prop.stun or agent.character.prop.blind:
+        return ret
+    # hypothesis: Wizard runs also die to non-insect monsters, but spending
+    # Force bolt on them before HP is critical hurts later survival. Extend the
+    # existing insect emergency to other substantial threats only at <=8 HP,
+    # before accepting melee; avoid hitting an adjacent explosive monster.
+    if agent.blstats.hitpoints > 16:
+        return ret
+
+    targeted_monsters = set()
+    y, x = agent.blstats.y + dy, agent.blstats.x + dx
+    for _ in range(13):
+        if not inside(agent, y, x) or not agent.current_level().walkable[y, x]:
+            break
+        monster = [m for m in monsters if m[1] == y and m[2] == x]
+        if monster:
+            m = monster[0]
+            _, my, mx, mon, _ = m
+            can_use_emergency_bolt = (
+                mon.mname not in WEAK_MONSTERS
+                and (mon.mname in INSECTS or agent.blstats.hitpoints <= 8)
+                and not (mon.mname in EXPLODING_MONSTERS and line_dis_from(agent, my, mx) <= 1)
+            )
+            if can_use_emergency_bolt:
+                targeted_monsters.add((y, x, m))
+            break
+        if agent.glyphs[y, x] in G.PETS:
+            break
+        y += dy
+        x += dx
+
+    if targeted_monsters:
+        # High enough to beat melee (16) and the Elbereth wait action at low
+        # HP.  Casting erases Elbereth (3.6), but at HP <= 16 against an insect
+        # this is the same trade attempt 10 already accepted for meleeing
+        # insects on Elbereth.
+        ret.append((25, ('cast', 'force bolt', dy, dx, targeted_monsters)))
+    return ret
+
+
 def elbereth_action(agent, monsters):
     if agent.inventory.engraving_below_me.lower() == 'elbereth':
         return []
@@ -221,7 +303,13 @@ def elbereth_action(agent, monsters):
             adj_monsters_count += 2 * multiplier
 
     player_hp_ratio = (agent.blstats.hitpoints / agent.blstats.max_hitpoints) ** 0.5
-    if agent.blstats.hitpoints < 30 and adj_monsters_count > 0:
+    # hypothesis: engraving Elbereth takes 8 turns, during which an adjacent
+    # monster keeps attacking. Once the bot is strong (Xp>=8) and its HP is
+    # already critically low it cannot survive those 8 turns, so engraving is
+    # suicide; melee or move instead. Gate on Xp>=8 so the fragile early game
+    # (where Elbereth at low HP is load-bearing) stays bit-identical.
+    if agent.blstats.hitpoints < 30 and adj_monsters_count > 0 and \
+            (agent.blstats.hitpoints >= 8 or agent.blstats.experience_level < 8):
         return [(-15 + 20 * adj_monsters_count * (1 - player_hp_ratio), ('elbereth',))]
     return []
 
@@ -234,6 +322,32 @@ def wait_action(agent, monsters):
     return []
 
 
+def defensive_self_zap_action(agent, monsters):
+    # hypothesis: a Wizard facing a wererat in melee (which ignores Elbereth
+    # in human form and can summon rats / infect lycanthropy) should self-zap
+    # a wand of make invisible so the monster can no longer see it, instead of
+    # trading blows and dying. Only do it when there is no pet to lose track of
+    # the invisible hero, or once the hero is strong enough (Xp>=7) that the
+    # defensive buff is worth the pet disruption.
+    if agent.invisible:
+        return []
+    wand = None
+    for item in agent.inventory.items:
+        if item.is_unambiguous() and item.is_wand() and \
+                item.object.name == 'make invisible' and item.uses != 'no charges':
+            wand = item
+            break
+    if wand is None:
+        return []
+    for monster in monsters:
+        _, my, mx, mon, _ = monster
+        if not adjacent((my, mx), (agent.blstats.y, agent.blstats.x)):
+            continue
+        if mon.mname == 'wererat' and (not agent.has_pet or agent.blstats.experience_level >= 7):
+            return [(200, ('zap_self', wand))]
+    return []
+
+
 def get_available_actions(agent, monsters):
     actions = []
 
@@ -242,7 +356,12 @@ def get_available_actions(agent, monsters):
         _, y, x, mon, _ = monster
         if adjacent((y, x), (agent.blstats.y, agent.blstats.x)):
             priority = melee_monster_priority(agent, monsters, monster)
-            if agent.inventory.engraving_below_me.lower() == 'elbereth':
+            # hypothesis: the -100 melee penalty on Elbereth is meant to keep
+            # the bot safe, but an insect scared by Elbereth flees instead of
+            # fighting back, so meleeing it is safe and breaks the death
+            # spiral. Gate on owning a charged magic marker (see above).
+            if agent.inventory.engraving_below_me.lower() == 'elbereth' and \
+                    (mon.mname not in INSECTS or not _has_charged_magic_marker(agent)):
                 priority -= 100
             dy = y - agent.blstats.y
             dx = x - agent.blstats.x
@@ -261,6 +380,7 @@ def get_available_actions(agent, monsters):
                 actions.append((pri, ('ranged', dy, dx)))
 
             actions.extend(get_potential_wand_usages(agent, monsters, dy, dx))
+            actions.extend(get_potential_spell_usages(agent, monsters, dy, dx))
 
     to_pickup = decide_what_to_pickup(agent)
     if to_pickup:
@@ -268,6 +388,7 @@ def get_available_actions(agent, monsters):
 
     actions.extend(elbereth_action(agent, monsters))
     actions.extend(wait_action(agent, monsters))
+    actions.extend(defensive_self_zap_action(agent, monsters))
 
     return actions
 
