@@ -1453,7 +1453,11 @@ class Agent:
         if self.character.spell_fail_chance['healing'] > 0.2:
             return False
         hp_ratio = self.blstats.hitpoints / self.blstats.max_hitpoints
-        low_hp = hp_ratio < 0.5 or (self.blstats.hitpoints < 10 and self.blstats.max_hitpoints > 10)
+        # hypothesis: a Wizard can lose a large fraction of its HP between
+        # turns while fighting; earlier healing spell and potion use adds a
+        # buffer before an emergency becomes lethal.
+        threshold = 0.7 if self.character.role == self.character.WIZARD else 0.5
+        low_hp = hp_ratio < threshold or (self.blstats.hitpoints < 10 and self.blstats.max_hitpoints > 10)
         return self.blstats.energy >= 5 and low_hp
 
     def should_cast_extra_heal(self):
@@ -1485,8 +1489,9 @@ class Agent:
 
         items = [item for item in flatten_items(self.inventory.items) if item.is_unambiguous() and
                  item.category == nh.POTION_CLASS and item.object.name in ['healing', 'extra healing', 'full healing']]
+        potion_threshold = 0.5 if self.character.role == self.character.WIZARD else 1 / 3
         if (
-                (self.blstats.hitpoints < 1 / 3 * self.blstats.max_hitpoints
+                (self.blstats.hitpoints < potion_threshold * self.blstats.max_hitpoints
                  or self.blstats.hitpoints < 8) and items
         ):
             yield True

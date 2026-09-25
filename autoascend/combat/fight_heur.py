@@ -242,9 +242,10 @@ def get_potential_spell_usages(agent, monsters, dy, dx):
     # A confused, stunned or blind caster cannot cast reliably.
     if agent.character.prop.confusion or agent.character.prop.stun or agent.character.prop.blind:
         return ret
-    # hypothesis: at <=16 HP, even non-insect enemies can kill a Wizard before
-    # melee wins; spend Force bolt to damage any non-weak attacker first, while
-    # avoiding adjacent explosive monsters.
+    # hypothesis: Wizard runs also die to non-insect monsters, but spending
+    # Force bolt on them before HP is critical hurts later survival. Extend the
+    # existing insect emergency to other substantial threats only at <=8 HP,
+    # before accepting melee; avoid hitting an adjacent explosive monster.
     if agent.blstats.hitpoints > 16:
         return ret
 
@@ -257,8 +258,10 @@ def get_potential_spell_usages(agent, monsters, dy, dx):
         if monster:
             m = monster[0]
             _, my, mx, mon, _ = m
-            can_use_emergency_bolt = mon.mname not in WEAK_MONSTERS and not (
-                mon.mname in EXPLODING_MONSTERS and line_dis_from(agent, my, mx) <= 1
+            can_use_emergency_bolt = (
+                mon.mname not in WEAK_MONSTERS
+                and (mon.mname in INSECTS or agent.blstats.hitpoints <= 8)
+                and not (mon.mname in EXPLODING_MONSTERS and line_dis_from(agent, my, mx) <= 1)
             )
             if can_use_emergency_bolt:
                 targeted_monsters.add((y, x, m))

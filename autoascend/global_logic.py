@@ -639,7 +639,10 @@ class GlobalLogic:
                 self.follow_guard(),
             ])
             .preempt(self.agent, [
-                self.agent.fight2(),
+                # hypothesis: fight2's loop delays the existing low-HP healing
+                # and emergency items until nearby monsters are gone. Allow the
+                # emergency strategy to interrupt combat between turns.
+                self.agent.fight2().preempt(self.agent, [self.agent.emergency_strategy()]),
             ])
             # hypothesis: the wizard (and other foodless starts) starves because
             # fight2 preempts corpse-eating whenever any monster is within 7 tiles,
