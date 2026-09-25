@@ -242,11 +242,9 @@ def get_potential_spell_usages(agent, monsters, dy, dx):
     # A confused, stunned or blind caster cannot cast reliably.
     if agent.character.prop.confusion or agent.character.prop.stun or agent.character.prop.blind:
         return ret
-    # hypothesis: Wizard runs die to ordinary melee threats before HP reaches
-    # the old <=8 emergency cutoff. Use Force bolt against any non-weak threat
-    # at <=16 HP, matching the insect emergency window; avoid adjacent blasts.
-    if agent.blstats.hitpoints > 16:
-        return ret
+    # hypothesis: explosive monsters killed at range cannot blast the Wizard;
+    # spend Force bolt on a safe ranged kill even at high HP to prevent later
+    # close contact, while keeping the existing HP limits for other monsters.
 
     targeted_monsters = set()
     y, x = agent.blstats.y + dy, agent.blstats.x + dx
@@ -259,6 +257,9 @@ def get_potential_spell_usages(agent, monsters, dy, dx):
             _, my, mx, mon, _ = m
             can_use_emergency_bolt = (
                 mon.mname not in WEAK_MONSTERS
+                and ((mon.mname in INSECTS and agent.blstats.hitpoints <= 16)
+                     or agent.blstats.hitpoints <= 8
+                     or (mon.mname in EXPLODING_MONSTERS and line_dis_from(agent, my, mx) > 1))
                 and not (mon.mname in EXPLODING_MONSTERS and line_dis_from(agent, my, mx) <= 1)
             )
             if can_use_emergency_bolt:
@@ -270,10 +271,8 @@ def get_potential_spell_usages(agent, monsters, dy, dx):
         x += dx
 
     if targeted_monsters:
-        # High enough to beat melee (16) and the Elbereth wait action at low
-        # HP.  Casting erases Elbereth (3.6), but at HP <= 16 against an insect
-        # this is the same trade attempt 10 already accepted for meleeing
-        # insects on Elbereth.
+        # High enough to beat melee (16) and the Elbereth wait action when the
+        # target is an emergency or a safely distant explosive monster.
         ret.append((25, ('cast', 'force bolt', dy, dx, targeted_monsters)))
     return ret
 
