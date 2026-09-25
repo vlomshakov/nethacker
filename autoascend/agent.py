@@ -1453,10 +1453,10 @@ class Agent:
         if self.character.spell_fail_chance['healing'] > 0.2:
             return False
         hp_ratio = self.blstats.hitpoints / self.blstats.max_hitpoints
-        # hypothesis: a Wizard can lose a large fraction of its HP between
-        # turns while fighting; earlier healing spell and potion use adds a
-        # buffer before an emergency becomes lethal.
-        threshold = 0.7 if self.character.role == self.character.WIZARD else 0.5
+        # hypothesis: a Wizard's HP pool grows faster than a single attack's
+        # damage, so healing below 85% gives it time to recover before a burst
+        # of melee damage can become lethal.
+        threshold = 0.85 if self.character.role == self.character.WIZARD else 0.5
         low_hp = hp_ratio < threshold or (self.blstats.hitpoints < 10 and self.blstats.max_hitpoints > 10)
         return self.blstats.energy >= 5 and low_hp
 
