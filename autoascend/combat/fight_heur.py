@@ -304,12 +304,10 @@ def elbereth_action(agent, monsters):
 
     player_hp_ratio = (agent.blstats.hitpoints / agent.blstats.max_hitpoints) ** 0.5
     # hypothesis: engraving Elbereth takes 8 turns, during which an adjacent
-    # monster keeps attacking. Once the bot is strong (Xp>=8) and its HP is
-    # already critically low it cannot survive those 8 turns, so engraving is
-    # suicide; melee or move instead. Gate on Xp>=8 so the fragile early game
-    # (where Elbereth at low HP is load-bearing) stays bit-identical.
+    # monster keeps attacking. At Xp>=8 and below 16 HP, skip that delay and
+    # choose a faster response before the monster can finish the Wizard.
     if agent.blstats.hitpoints < 30 and adj_monsters_count > 0 and \
-            (agent.blstats.hitpoints >= 8 or agent.blstats.experience_level < 8):
+            (agent.blstats.hitpoints >= 16 or agent.blstats.experience_level < 8):
         return [(-15 + 20 * adj_monsters_count * (1 - player_hp_ratio), ('elbereth',))]
     return []
 
