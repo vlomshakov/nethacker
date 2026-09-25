@@ -1487,8 +1487,11 @@ class Agent:
             self.cast('healing', direction=(0, 0))
             return
 
+        # hypothesis: a smoky potion can summon a hostile djinni instead of
+        # restoring HP, so don't treat that appearance as a safe emergency heal.
         items = [item for item in flatten_items(self.inventory.items) if item.is_unambiguous() and
-                 item.category == nh.POTION_CLASS and item.object.name in ['healing', 'extra healing', 'full healing']]
+                 item.category == nh.POTION_CLASS and item.object.name in ['healing', 'extra healing', 'full healing']
+                 and not any(O.objects[int(nh.glyph_to_obj(glyph))].desc == 'smoky' for glyph in item.glyphs)]
         potion_threshold = 0.5 if self.character.role == self.character.WIZARD else 1 / 3
         if (
                 (self.blstats.hitpoints < potion_threshold * self.blstats.max_hitpoints
