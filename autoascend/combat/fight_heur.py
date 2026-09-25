@@ -4,7 +4,7 @@ from itertools import product
 import numpy as np
 from scipy import signal
 
-from ..glyph import G
+from ..glyph import G, Hunger
 from ..utils import adjacent
 from .monster_utils import is_monster_faster, is_dangerous_monster, \
     ONLY_RANGED_SLOW_MONSTERS, EXPLODING_MONSTERS, WEAK_MONSTERS, INSECTS, consider_melee_only_ranged_if_hp_full
@@ -226,6 +226,11 @@ def get_potential_spell_usages(agent, monsters, dy, dx):
     """
     ret = []
     if agent.character.role != agent.character.WIZARD:
+        return ret
+    # hypothesis: weak hunger prevents spellcasting and delays hunger recovery;
+    # stop failed Force bolt actions so the emergency strategy can use food or
+    # pray before the Wizard reaches fainting.
+    if agent.blstats.hunger_state >= Hunger.WEAK:
         return ret
     if 'force bolt' not in agent.character.known_spells:
         return ret

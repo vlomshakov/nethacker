@@ -1446,7 +1446,7 @@ class Agent:
             return False
         if 'healing' not in self.character.known_spells:
             return False
-        if self.blstats.hunger_state >= Hunger.FAINTING:
+        if self.blstats.hunger_state >= Hunger.WEAK:
             return False
         if self._last_turn - self.last_cast_fail_turn['healing'] < 2:
             return False
@@ -1463,7 +1463,7 @@ class Agent:
     def should_cast_extra_heal(self):
         if 'extra healing' not in self.character.known_spells:
             return False
-        if self.blstats.hunger_state >= Hunger.FAINTING:
+        if self.blstats.hunger_state >= Hunger.WEAK:
             return False
         if self._last_turn - self.last_cast_fail_turn['extra healing'] < 2:
             return False
@@ -1512,7 +1512,7 @@ class Agent:
                 (self.is_safe_to_pray(500) and
                  (self.blstats.hitpoints < 1 / (5 if self.blstats.experience_level < 6 else 6)
                   * self.blstats.max_hitpoints or self.blstats.hitpoints < 6))
-                or (self.is_safe_to_pray(400) and self.blstats.hunger_state >= Hunger.FAINTING)
+                or (self.is_safe_to_pray(400) and self.blstats.hunger_state >= Hunger.WEAK)
         ):
             yield True
             self.pray()
