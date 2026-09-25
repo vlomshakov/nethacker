@@ -6,7 +6,7 @@ from scipy import signal
 
 from ..glyph import G
 from ..utils import adjacent
-from .monster_utils import is_monster_faster, is_dangerous_monster, \
+from .monster_utils import is_monster_faster, is_dangerous_monster, imminent_death_on_melee, \
     ONLY_RANGED_SLOW_MONSTERS, EXPLODING_MONSTERS, WEAK_MONSTERS, INSECTS, consider_melee_only_ranged_if_hp_full
 from .movement_priority import draw_monster_priority_positive, draw_monster_priority_negative
 from .utils import wielding_ranged_weapon, line_dis_from, inside
@@ -28,6 +28,12 @@ def melee_monster_priority(agent, monsters, monster):
         ret -= 17
     if 'were' in mon.mname:
         ret += 1
+    # hypothesis: the movement heuristic already identifies melee exchanges
+    # likely to be lethal, but this attack score can still outweigh retreat.
+    # Lower melee priority in that state so the bot can escape or use ranged
+    # attacks instead of trading the hit that ends the run.
+    if imminent_death_on_melee(agent, monster):
+        ret -= 20
     # hypothesis: once the bot has reached Xp:8 it no longer needs to farm XP,
     # and meleeing dangerous monsters (soldier ants, wild dogs/cats) on the
     # deeper levels is what gets it killed. Disengage from them so it explores
@@ -316,11 +322,6 @@ def elbereth_action(agent, monsters):
 
 def wait_action(agent, monsters):
     if agent.inventory.engraving_below_me.lower() == 'elbereth':
-        # hypothesis: an adjacent dangerous monster can ignore or outlast
-        # Elbereth; don't let passive waiting suppress the available response.
-        if any(adjacent((monster[1], monster[2]), (agent.blstats.y, agent.blstats.x)) and
-               is_dangerous_monster(monster) for monster in monsters):
-            return []
         player_hp_ratio = agent.blstats.hitpoints / agent.blstats.max_hitpoints
         priority = 30 - player_hp_ratio * 40
         return [(priority, ('wait',))]
