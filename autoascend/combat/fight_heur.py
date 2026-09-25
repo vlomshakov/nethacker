@@ -242,10 +242,9 @@ def get_potential_spell_usages(agent, monsters, dy, dx):
     # A confused, stunned or blind caster cannot cast reliably.
     if agent.character.prop.confusion or agent.character.prop.stun or agent.character.prop.blind:
         return ret
-    # hypothesis: Wizard runs also die to non-insect monsters, but spending
-    # Force bolt on them before HP is critical hurts later survival. Extend the
-    # existing insect emergency to other substantial threats only at <=8 HP,
-    # before accepting melee; avoid hitting an adjacent explosive monster.
+    # hypothesis: at <=16 HP, even non-insect enemies can kill a Wizard before
+    # melee wins; spend Force bolt to damage any non-weak attacker first, while
+    # avoiding adjacent explosive monsters.
     if agent.blstats.hitpoints > 16:
         return ret
 
@@ -258,10 +257,8 @@ def get_potential_spell_usages(agent, monsters, dy, dx):
         if monster:
             m = monster[0]
             _, my, mx, mon, _ = m
-            can_use_emergency_bolt = (
-                mon.mname not in WEAK_MONSTERS
-                and (mon.mname in INSECTS or agent.blstats.hitpoints <= 8)
-                and not (mon.mname in EXPLODING_MONSTERS and line_dis_from(agent, my, mx) <= 1)
+            can_use_emergency_bolt = mon.mname not in WEAK_MONSTERS and not (
+                mon.mname in EXPLODING_MONSTERS and line_dis_from(agent, my, mx) <= 1
             )
             if can_use_emergency_bolt:
                 targeted_monsters.add((y, x, m))
@@ -304,10 +301,12 @@ def elbereth_action(agent, monsters):
 
     player_hp_ratio = (agent.blstats.hitpoints / agent.blstats.max_hitpoints) ** 0.5
     # hypothesis: engraving Elbereth takes 8 turns, during which an adjacent
-    # monster keeps attacking. At Xp>=8 and below 16 HP, skip that delay and
-    # choose a faster response before the monster can finish the Wizard.
+    # monster keeps attacking. Once the bot is strong (Xp>=8) and its HP is
+    # already critically low it cannot survive those 8 turns, so engraving is
+    # suicide; melee or move instead. Gate on Xp>=8 so the fragile early game
+    # (where Elbereth at low HP is load-bearing) stays bit-identical.
     if agent.blstats.hitpoints < 30 and adj_monsters_count > 0 and \
-            (agent.blstats.hitpoints >= 16 or agent.blstats.experience_level < 8):
+            (agent.blstats.hitpoints >= 8 or agent.blstats.experience_level < 8):
         return [(-15 + 20 * adj_monsters_count * (1 - player_hp_ratio), ('elbereth',))]
     return []
 
