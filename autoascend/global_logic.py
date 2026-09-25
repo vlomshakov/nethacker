@@ -516,11 +516,8 @@ class GlobalLogic:
             explore_stairs_condition = lambda: False
             if self.milestone == Milestone.BE_ON_FIRST_LEVEL:
                 condition = lambda: self.agent.blstats.experience_level >= 8
-                # hypothesis: an XP3+ tourist should leave the level-one farm on first becoming hungry,
-                # because a long exploration action can otherwise run through WEAK to starvation before preemption.
-                explore_stairs_condition = lambda: self.agent.character.role == Character.TOURIST and \
-                    self.agent.blstats.experience_level >= 3 and \
-                    self.agent.blstats.hunger_state >= Hunger.HUNGRY
+                # explore_stairs_condition = lambda: self.agent.inventory.items.total_nutrition() == 0 and \
+                #                                    self.agent.blstats.hunger_state >= Hunger.NOT_HUNGRY
                 level = (Level.DUNGEONS_OF_DOOM, 1)
 
             elif self.milestone == Milestone.FIND_SOKOBAN:
@@ -528,8 +525,14 @@ class GlobalLogic:
                 level = (Level.SOKOBAN, 4)
 
             elif self.milestone == Milestone.FIND_GNOMISH_MINES:
-                condition = lambda: self.agent.current_level().dungeon_number == Level.GNOMISH_MINES
-                level = (Level.GNOMISH_MINES, 1)
+                # hypothesis: for a gnomish hero the Gnomish Mines are the
+                # safest fast source of depth (native gnomes/dwarves are
+                # peaceful), and depth is what the progression score rewards.
+                # Descend straight to Mines End instead of stopping at the
+                # entrance, so the bot banks the depth before the Sokoban
+                # detour.
+                condition = lambda: self.agent.current_level().key() == (Level.GNOMISH_MINES, 9)
+                level = (Level.GNOMISH_MINES, 9)
 
             # elif self.milestone == Milestone.FIND_LIGHT_GNOMISH_MINES:
             #     condition = lambda: self.agent.current_level().dungeon_number == Level.GNOMISH_MINES \
@@ -636,7 +639,23 @@ class GlobalLogic:
                 self.follow_guard(),
             ])
             .preempt(self.agent, [
-                self.agent.fight2(),
+                # hypothesis: fight2's loop delays the existing low-HP healing
+                # and emergency items until nearby monsters are gone. Allow the
+                # emergency strategy to interrupt combat between turns.
+                self.agent.fight2().preempt(self.agent, [self.agent.emergency_strategy()]),
+            ])
+            # hypothesis: the wizard (and other foodless starts) starves because
+            # fight2 preempts corpse-eating whenever any monster is within 7 tiles,
+            # so the bot only eats once it is already fainting. Eat the nearest
+            # edible corpse *before* fighting, but only when actually hungry and
+            # with no adjacent monster, so it doesn't eat mid-melee (which the
+            # naive "eat before fight2" reorder showed gets the bot killed).
+            .preempt(self.agent, [
+                self.agent.eat_corpses_from_ground().every(5).condition(
+                    lambda: self.agent.blstats.hunger_state >= Hunger.HUNGRY and
+                            not any(utils.adjacent((m[1], m[2]), (self.agent.blstats.y, self.agent.blstats.x))
+                                    for m in self.agent.get_visible_monsters())
+                ),
             ])
             .preempt(self.agent, [
                 self.agent.engulfed_fight(),

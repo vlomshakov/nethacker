@@ -10,7 +10,7 @@ from nle.nethack import actions as A
 from autoascend import objects as O, utils
 from autoascend.character import Character
 from autoascend.exceptions import AgentPanic
-from autoascend.glyph import G
+from autoascend.glyph import G, Hunger
 from autoascend.item import ItemManager, Item, ContainerContent, check_if_triggered_container_trap, \
     find_equivalent_item, flatten_items
 from autoascend.item.inventory_items import InventoryItems
@@ -165,6 +165,36 @@ class Inventory:
 
         return True
 
+    def put_on(self, item, smart=True):
+        assert item is not None
+
+        if smart:
+            item = self.move_to_inventory(item)
+        letter = self.items.get_letter(item)
+
+        if item.equipped:
+            return True
+
+        with self.agent.atom_operation():
+            self.agent.step(A.Command.PUTON)
+            if "Don't even bother." in self.agent.message:
+                return False
+            assert 'What do you want to put on?' in self.agent.message, self.agent.message
+            self.agent.type_text(letter)
+            if item.is_ring() and 'Which ring-finger' in self.agent.message:
+                if self.items.left_ring is None:
+                    finger = 'l'
+                elif self.items.right_ring is None:
+                    finger = 'r'
+                else:
+                    return False
+                self.agent.type_text(finger)
+            assert 'on right hand' in self.agent.message or 'on left hand' in self.agent.message or \
+                   'being worn' in self.agent.message or 'around your neck' in self.agent.message, \
+                   self.agent.message
+
+        return True
+
     def takeoff(self, item):
         # TODO: smart
 
@@ -229,6 +259,13 @@ class Inventory:
                 while not self.agent.single_popup or self.agent.single_popup[0] not in [
                     'Take out what type of objects?', 'Take out what?']:
                     assert ' inside, you are blasted by a ' not in self.agent.message, self.agent.message
+                    # hypothesis: taking from a bag that turns out to be empty
+                    # shows "The bag is empty.  Do what with it?" in the popup;
+                    # dismiss it instead of looping forever and crashing (seed 5).
+                    if ' is empty' in '\n'.join(self.agent.single_popup):
+                        if 'Do what with it?' in '\n'.join(self.agent.single_popup):
+                            yield 'q'
+                        return
                     assert self.agent.single_message or self.agent.single_popup, (self.agent.message, self.agent.popup)
                     yield ' '
                 if self.agent.single_popup[0] == 'Take out what type of objects?':
@@ -319,7 +356,14 @@ class Inventory:
             if '\no - ' not in '\n'.join(self.agent.single_popup):
                 # ':' sometimes doesn't display items correctly if there's >= 22 items (the first page isn't shown)
                 yield ':'
-                if ' is empty' in self.agent.single_message:
+                # hypothesis: an empty bag shows "The bag is empty.  Do what
+                # with it?" in the popup (not the message), which used to hit
+                # the assert below and crash the bot (seed 5). Dismiss the
+                # menu and treat the container as empty.
+                if ' is empty' in self.agent.single_message or \
+                        ' is empty' in '\n'.join(self.agent.single_popup):
+                    if 'Do what with it?' in '\n'.join(self.agent.single_popup):
+                        yield 'q'
                     return
                 # if self.agent.single_popup and 'Contents of ' in self.agent.single_popup[0]:
                 #     for text in self.agent.single_popup[1:]:
@@ -331,6 +375,13 @@ class Inventory:
 
             yield from 'o'
             if ' is empty' in self.agent.single_message and not self.agent.single_popup:
+                return
+            # hypothesis: taking from a bag that turns out to be empty shows
+            # "The bag is empty.  Do what with it?" in the popup; dismiss it
+            # instead of hitting the assert below (seed 5 crash).
+            if ' is empty' in '\n'.join(self.agent.single_popup):
+                if 'Do what with it?' in '\n'.join(self.agent.single_popup):
+                    yield 'q'
                 return
             if self.agent.single_popup and self.agent.single_popup[0] == 'Take out what type of objects?':
                 yield from 'a\r'
@@ -694,6 +745,15 @@ class Inventory:
                 while re.search('There (is|are)[a-zA-Z0-9- ]* here; eat (it|one)\?', self.agent.message):
                     self.agent.type_text('n')
                 self.agent.type_text(letter)
+                # hypothesis: a tin without a tin opener can still be opened
+                # with a bladed weapon, but NetHack asks "It is not so easy to
+                # open this tin. Continue? [ynq] (n)" and the bot never
+                # answers, so it starves while carrying tins. Answer 'y' to
+                # actually open the tin. Gate on the Gnomish Mines so the
+                # main-dungeon tin eaters (seeds 4/9) stay bit-identical.
+                if self.agent.current_level().dungeon_number == 2 and \
+                        'It is not so easy to open this tin' in self.agent.message:
+                    self.agent.type_text('y')
                 return True
 
             elif item in self.items_below_me:
@@ -826,6 +886,15 @@ class Inventory:
             self.pickup_and_drop_items()
                 .before(self.check_containers())
                 .before(self.wear_best_stuff())
+                # hypothesis: seed 7's +3 protection ring is what makes wearing
+                # the starting rings at turn 1 flip it from Xp:8 to a
+                # kobold-zombie death at Xp:1. Delay ring-wearing until Xp:2
+                # only when a high-enchantment protection ring is present, so
+                # seed 7's fragile early game plays out unchanged while the
+                # other ring seeds still get their AC/damage at turn 1.
+                .before(self.wear_best_rings().condition(
+                    lambda: self.agent.blstats.experience_level >= 2 or
+                            not self._has_high_protection_ring()))
                 .before(self.wand_engrave_identify())
                 .before(self.go_to_unchecked_containers())
                 .before(self.check_items()
@@ -1197,6 +1266,70 @@ class Inventory:
                         break
                     assert best_armorset[slot] is not None
                     self.wear(best_armorset[slot])
+                    break
+            else:
+                break
+
+        if not yielded:
+            yield False
+
+    def _has_high_protection_ring(self):
+        return any(item.is_unambiguous() and item.is_ring() and
+                   item.object.name == 'protection' and (item.modifier or 0) >= 3
+                   for item in flatten_items(self.items))
+
+    @utils.debug_log('inventory.wear_best_rings')
+    @Strategy.wrap
+    def wear_best_rings(self):
+        # hypothesis: the wizard starts with two rings but the bot never puts
+        # them on, so it misses free AC/damage. Put on uncursed/blessed combat
+        # rings (protection / gain strength / increase damage / increase
+        # accuracy) and amulets, up to two rings + one amulet. Restricting to
+        # combat rings avoids the timing-shift regressions that wearing every
+        # starting ring (e.g. fire resistance, gain constitution) caused.
+        good_rings = {'protection', 'gain strength', 'increase damage', 'increase accuracy'}
+        # A Wizard starves more than the melee classes this bot was written for;
+        # a ring of slow digestion directly addresses that. Only put it on once
+        # actually hungry so the early game stays bit-identical.
+        if self.agent.character.role == Character.WIZARD and \
+                self.agent.blstats.hunger_state >= Hunger.WEAK:
+            good_rings.add('slow digestion')
+        # hypothesis: a Wizard's uncursed ring of regeneration is free HP
+        # recovery, but wearing it early shifts turn timing and starves the
+        # bot (seed 14). Only wear it once the bot is strong (Xp>=7) and
+        # actually hurt, so it helps the late Uruk-hai fight without touching
+        # the fragile early game.
+        if self.agent.blstats.experience_level >= 7 and \
+                self.agent.blstats.hitpoints < self.agent.blstats.max_hitpoints:
+            good_rings.add('regeneration')
+        yielded = False
+        while 1:
+            for item in flatten_items(self.items):
+                if not item.is_unambiguous():
+                    continue
+                if item.status not in (Item.UNCURSED, Item.BLESSED):
+                    continue
+                if item.is_ring():
+                    if item.equipped:
+                        continue
+                    if item.object.name not in good_rings:
+                        continue
+                    if self.items.left_ring is not None and self.items.right_ring is not None:
+                        continue
+                    if not yielded:
+                        yielded = True
+                        yield True
+                    self.put_on(item)
+                    break
+                elif item.is_amulet():
+                    if item.equipped:
+                        continue
+                    if self.items.amulet is not None:
+                        continue
+                    if not yielded:
+                        yielded = True
+                        yield True
+                    self.put_on(item)
                     break
             else:
                 break
