@@ -2619,6 +2619,127 @@ class Agent:
             self.search()
         self._astra_rest_after = self.blstats.time + 20
 
+    @Strategy.wrap
+    def astra_boulder_food(self):
+        """Convert an adjacent boulder to food using the Healer's known spell.
+
+        NetHack zap.c stone_to_flesh_obj turns BOULDER into HUGE_CHUNK_OF_MEAT.
+        Never target statues (which can animate), shops or Sokoban boulders.
+        """
+        bl = self.blstats
+        level = self.current_level()
+        if self.character.role != Character.HEALER or self.character.prop.blind or \
+                self.character.prop.hallu or self.character.prop.polymorph or \
+                self.character.prop.confusion or self.character.prop.stun or self.get_visible_monsters() or \
+                level.dungeon_number == Level.SOKOBAN or bl.hunger_state < Hunger.HUNGRY:
+            yield False
+        target = getattr(self, '_astra_meat_target', None)
+        if target is not None:
+            key, y, x, turn = target
+            if key != level.key() or bl.time - turn > 40 or level.shop[y, x]:
+                self._astra_meat_target = None
+                yield False
+            if (bl.y, bl.x) != (y, x):
+                if self.bfs()[y, x] < 0:
+                    self._astra_meat_target = None
+                    yield False
+                yield True
+                self.go_to(y, x, max_steps=1)
+                return
+            chunks = [i for i in (self.inventory.items_below_me or [])
+                      if i.is_unambiguous() and i.object.name == 'huge chunk of meat' and
+                      i.shop_status == Item.NOT_SHOP]
+            self._astra_meat_target = None
+            if not chunks:
+                yield False
+            yield True
+            self.log('HUNGER eating freshly created boulder meat')
+            self.inventory.eat(chunks[0])
+            return
+        spell = 'stone to flesh'
+        if spell not in self.character.known_spells or \
+                bl.energy < 15 or \
+                bl.hunger_state >= Hunger.FAINTING or self.carried_food_nutrition() >= 800 or \
+                bl.time - getattr(self, '_astra_food_cast_turn', -100) < 30:
+            yield False
+        target = None
+        approach = None
+        dis = self.bfs()
+        for y, x in zip(*utils.isin(self.glyphs, G.BOULDER).nonzero()):
+            y, x = int(y), int(x)
+            if level.shop[y, x]:
+                continue
+            if max(abs(y-bl.y), abs(x-bl.x)) != 1:
+                neighbours = [(yy, xx) for yy in range(max(0,y-1), min(self.glyphs.shape[0],y+2))
+                              for xx in range(max(0,x-1), min(self.glyphs.shape[1],x+2))
+                              if 0 < dis[yy, xx] <= 6 and not level.shop[yy, xx]]
+                if neighbours:
+                    pos = min(neighbours, key=lambda pos: dis[pos])
+                    if approach is None or dis[pos] < dis[approach]:
+                        approach = pos
+                continue
+            dy, dx = y-bl.y, x-bl.x
+            safe = True
+            for distance in range(1, 9):
+                yy, xx = bl.y+dy*distance, bl.x+dx*distance
+                if not (0 <= yy < self.glyphs.shape[0] and 0 <= xx < self.glyphs.shape[1]):
+                    break
+                glyph = self.glyphs[yy, xx]
+                if glyph in G.STATUES or glyph in G.PETS or glyph in G.MONS or level.shop[yy, xx]:
+                    safe = False
+                    break
+                if distance > 1 and not level.walkable[yy, xx] and glyph not in G.BOULDER:
+                    break
+            if safe:
+                target = (y, x, dy, dx)
+                break
+        if target is None:
+            if approach is None:
+                yield False
+            yield True
+            self.go_to(*approach, max_steps=1)
+            return
+        # If metal armor makes the food spell unreliable, remove one
+        # removable obstructing piece at a time, only beside the boulder.
+        failure = self.character.spell_fail_chance.get(spell, 1)
+        if failure > .5:
+            if bl.hitpoints < .6 * bl.max_hitpoints or self.hands_welded():
+                yield False
+            if bl.time >= getattr(self, '_astra_food_undressed_until', -1):
+                if bl.time < getattr(self, '_astra_food_strip_after', -1):
+                    yield False
+                self._astra_food_undressed_until = bl.time + 40
+                self._astra_food_strip_after = bl.time + 300
+            worn = self.inventory.items
+            remove = None
+            for slot in ('off_hand', 'helm', 'boots', 'suit'):
+                item = getattr(worn, slot, None)
+                if item is None or not item.is_armor() or not item.is_unambiguous() or \
+                        item.status not in (Item.UNCURSED, Item.BLESSED) or \
+                        item.object.metal not in (O.IRON, O.METAL, O.COPPER, O.SILVER, O.GOLD, O.MITHRIL) or \
+                        item.object.name == 'helm of brilliance':
+                    continue
+                if slot == 'suit' and worn.cloak is not None:
+                    if worn.cloak.status not in (Item.UNCURSED, Item.BLESSED):
+                        continue
+                    item = worn.cloak
+                remove = item
+                break
+            if remove is None:
+                self._astra_food_undressed_until = -1
+                yield False
+            yield True
+            self.inventory.takeoff(remove)
+            return
+        yield True
+        self._astra_food_undressed_until = -1
+        y, x, dy, dx = target
+        self._astra_food_cast_turn = bl.time
+        self.log('HUNGER casting stone to flesh on an adjacent boulder')
+        self.cast(spell, (dy, dx))
+        if self.glyphs[y, x] not in G.BOULDER:
+            self._astra_meat_target = (level.key(), y, x, self.blstats.time)
+
     @utils.debug_log('emergency_strategy')
     @Strategy.wrap
     def emergency_strategy(self):

@@ -944,6 +944,10 @@ class GlobalLogic:
             .preempt(self.agent, [
                 self.dive.dig_first(),
             ])
+            # A quiet, hungry Healer prepares food before committing to another descent.
+            .preempt(self.agent, [
+                self.agent.astra_boulder_food(),
+            ])
             # astra's survival layer, only once diving (the tour keeps the elite's proven behaviour)
             .preempt(self.agent, [
                 self.dive.elbereth_rest().condition(lambda: self.dive.diving or jf_config.SURVIVAL_IN_TOUR),

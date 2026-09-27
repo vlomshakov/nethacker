@@ -1329,6 +1329,8 @@ class Inventory:
     @utils.debug_log('inventory.wear_best_stuff')
     @Strategy.wrap
     def wear_best_stuff(self):
+        if self.agent.blstats.time < getattr(self.agent, '_astra_food_undressed_until', -1) and not self.agent.get_visible_monsters():
+            yield False
         if self.agent.hands_welded():
             yield False   # armor can't come off (or go on over it) with the hands welded
             return
