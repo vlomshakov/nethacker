@@ -59,6 +59,11 @@ def melee_monster_priority(agent, monsters, monster):
         ret += 15
     if wielding_ranged_weapon(agent) and not is_monster_faster(agent, monster):
         ret -= 6
+    if mon.mname == 'ghost' and agent.character.role == agent.character.HEALER and \
+            agent.blstats.experience_level < 4:
+        # A legal retreat beats an extended low-probability melee fight.
+        # If cornered, an attack remains available.
+        ret -= 25
     if mon.mname in EXPLODING_MONSTERS:
         ret -= 17
     if 'were' in mon.mname:

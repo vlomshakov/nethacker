@@ -2519,6 +2519,10 @@ class DiveLogic:
         wand = next((i for i in agent.inventory.items if i.is_wand() and i.is_unambiguous() and
                      i.object == O.from_name('digging', nh.WAND_CLASS) and
                      not agent.inventory.is_known_empty(i)), None) if DIG_WAND_ESCAPE else None
+        # A blind digger being hit cannot rely on a readable engraving or
+        # finish an interrupted occupation. Use an instant escape or combat.
+        if agent.character.prop.blind and agent._hurt_recently(2):
+            return self._wand_escape(wand)
         # AT_ELBERETH_FIX + AT_DIG_RADIUS 2: one step further out too -- it is next to us after its move, before the
         # dig's first turn (at3 harness seed 0: a Grey-elf pair and a soldier 2 steps away; four digs started, each
         # stopped by their first attack, with a wield of Excalibur in between each time: 72 -> 11 HP, no pit)

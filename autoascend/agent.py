@@ -1978,6 +1978,13 @@ class Agent:
         again once adjacent (unless passive), after FIGHT_IGNORE_TURNS, or when something hurts us (only those
         within 3 when any is: a sleeping zoo further off stays let go)."""
         monsters = self.get_visible_monsters()
+        # Ghosts are slow and difficult for an inexperienced Healer to hit.
+        # Keep adjacent ones in the escape calculation; do not pursue distant
+        # ones while the hero can gain experience against other creatures.
+        if self.character.role == Character.HEALER and self.blstats.experience_level < 4:
+            monsters = [m for m in monsters if m[3].mname != 'ghost' or
+                        utils.adjacent((self.blstats.y, self.blstats.x), (m[1], m[2]))]
+
         # the Valley's graveyards: their sleepers are left alone unless they attack (dive.VALLEY_GRAVE_FILTER)
         monsters = self.global_logic.dive.valley_fight_filter(monsters)
         if self._fight_stall_turns() <= 0 or not self._fight_ignored:
