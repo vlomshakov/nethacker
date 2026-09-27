@@ -2566,6 +2566,7 @@ class Agent:
             return None
         monsters = self.get_visible_monsters()
         threats = [m for m in monsters if m[0] <= 3 and
+                   hasattr(m[3], 'mlevel') and hasattr(m[3], 'mresists') and
                    (m[3].mlevel >= 3 or (m[3].mlevel >= 1 and
                     self.blstats.hitpoints < self.blstats.max_hitpoints * 0.6)) and
                    not (m[3].mresists & 4)]  # MR_SLEEP from NetHack monflag.h
@@ -2602,7 +2603,7 @@ class Agent:
             yield False
         yield True
         previous_hp = bl.hitpoints
-        for _ in range(100):
+        for _ in range(160):
             bl = self.blstats
             if self.get_visible_monsters() or bl.hunger_state >= Hunger.HUNGRY or \
                     bl.hitpoints >= 0.85 * bl.max_hitpoints or bl.hitpoints < previous_hp:
