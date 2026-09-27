@@ -37,7 +37,7 @@ EXACT_PRAYER = True
 # minimum turns since the last prayer for a hunger prayer while Fainting (DT6A: 400). Most first prayer
 # failures were Fainting prayers 900-1100 turns after the last one (rnz(350) timeout: ~6% fail there,
 # ~2% past 1100); a longer gap means fainting longer instead
-FAINT_PRAYER_GAP = 1100
+FAINT_PRAYER_GAP = 850
 # AutoAscend's periodic 'eat corpses' preempt was meant to walk to edible corpses on the level, but
 # only_below_me defaults to True, so it only ever eats what lies underfoot; the kills' corpses beside
 # us go to the pet (it ate ~40% of the grind's corpses)
@@ -97,7 +97,7 @@ STARVE_MARGIN = 60
 # Weak hunger prayers wait for this gap (DT6A/s13: 1200). Measured over ~2600 prayers, 900-1399-turn
 # gaps failed 3.5-5.4% of the time, 1400-1799 only 1.1% and 1800+ 0.6% -- but 1400 lost more games
 # to fainting than it saved from failed prayers (see FAINT_SHELTER).
-WEAK_PRAYER_GAP = 1200
+WEAK_PRAYER_GAP = 900
 # corpses older than this (turns since the kill) are not eaten (AutoAscend: 50; tainting starts above 50)
 CORPSE_MAX_AGE = 30
 FAINT_ESTIMATE_MARGIN = 90
@@ -245,9 +245,9 @@ DIVE_FED_MAX_WAIT = 2000
 # longer hunger-prayer gaps in the tour only (0: WEAK_PRAYER_GAP / FAINT_PRAYER_GAP): with FAINT_GUARD(_IDLE)
 # holding Elbereth through faints, rnz(350) fails 2.3% of prayers at a 1200 gap, 1.8% at 1400, 1.0% at 1700
 # ON (train 3.2, grind-food A047/A058/t32): 90 games 0.4025 vs 0.3964; in-lane losses 6 vs 10, failed prayers 3 vs 7 (was: 0)
-TOUR_WEAK_PRAYER_GAP = 1700
+TOUR_WEAK_PRAYER_GAP = 900
 # ON (train 3.2, grind-food A047/A058/t32): 90 games 0.4025 vs 0.3964; in-lane losses 6 vs 10, failed prayers 3 vs 7 (was: 0)
-TOUR_FAINT_PRAYER_GAP = 1600
+TOUR_FAINT_PRAYER_GAP = 850
 # per-XL tour gaps [[min_xl, weak_gap, faint_gap], ...] (the highest min_xl <= XL wins; overrides TOUR_*)
 TOUR_GAPS_BY_XL = []
 # the low-HP prayer only at pray.c's critically_low_hp (EXACT_PRAYER's HP rule without its turn-100 first prayer)
@@ -327,7 +327,7 @@ BEARTRAP_ESCAPE = True
 # with 5 food items)
 LYCAN_FIXES = True
 # no lycanthropy cure prayer while Hungry without food (wait for the Weak hunger prayer; see cure_disease)
-LYCAN_CURE_WAIT = False
+LYCAN_CURE_WAIT = True
 # were_unload drops a were form's load whenever Overtaxed or worse, not only when Weak with food to eat
 # t35: jf16 s6 0.602 -> 0.051 (a 9-HP were form dropped all 20 items on Dlvl 3 and never went back for them), jf14 s12
 # and arm-jf25 s0 -0.040 each -- off
@@ -391,7 +391,7 @@ TOOL_KEEP_FIRST = True
 # base8 tool-less camps fainted 2-23 times, and all 6 died there (large dog, soldier ant, gargoyle, gray unicorn)
 # t35/t36: arm-jf25 s5 +0.187, but arm-jf16 s11 0.602 -> 0.126 (held Weak on Elbereth instead of eating and taking the
 # dwarf's pick base8 took) and it fired in a deep tool dive in were form (digging_tool() None) -- off
-CAMP_GUARD = False
+CAMP_GUARD = True
 # a welded two-hander (a cursed dwarvish mattock the dive applied: 13% of dwarves' weapons are cursed) leaves no free
 # hand, so no Elbereth for the rest of the dive: base5-8 tool dives with a welded mattock scored 0.28-0.39 (4-5 per 90
 # games) vs 0.49-0.52 without. pray.c counts it as major trouble (TROUBLE_UNUSEABLE_HANDS: welded and !freehand())

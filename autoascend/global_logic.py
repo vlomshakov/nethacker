@@ -917,6 +917,7 @@ class GlobalLogic:
                 self.agent.escape_bear_trap(),
             ])
             .preempt(self.agent, [
+                self.agent.astra_quiet_recovery(),
                 self.agent.fight2(),
             ])
             # the Valley of the Dead only (GEHENNOM_DIVE): walk past the graveyards' sleeping undead

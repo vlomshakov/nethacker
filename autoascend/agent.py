@@ -2591,6 +2591,26 @@ class Agent:
                                                  self.blstats.y + dy, self.blstats.x + dx)
         return None
 
+    @Strategy.wrap
+    def astra_quiet_recovery(self):
+        bl = self.blstats
+        if self.character.role != Character.HEALER or self.character.prop.polymorph or self.character.prop.blind or \
+                bl.depth > 5 or self.global_logic.dive.digging_tool() is not None or \
+                bl.time < getattr(self, '_astra_rest_after', -1) or \
+                bl.hitpoints >= 0.65 * bl.max_hitpoints or bl.hunger_state >= Hunger.HUNGRY or \
+                self.get_visible_monsters():
+            yield False
+        yield True
+        previous_hp = bl.hitpoints
+        for _ in range(100):
+            bl = self.blstats
+            if self.get_visible_monsters() or bl.hunger_state >= Hunger.HUNGRY or \
+                    bl.hitpoints >= 0.85 * bl.max_hitpoints or bl.hitpoints < previous_hp:
+                break
+            previous_hp = bl.hitpoints
+            self.search()
+        self._astra_rest_after = self.blstats.time + 20
+
     @utils.debug_log('emergency_strategy')
     @Strategy.wrap
     def emergency_strategy(self):
