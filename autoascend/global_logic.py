@@ -980,5 +980,6 @@ class GlobalLogic:
             ])
             .preempt(self.agent, [
                 self.agent.emergency_strategy(),
+                self.agent.astra_pit_boulder_escape(),
             ])
         )

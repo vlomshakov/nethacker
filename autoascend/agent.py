@@ -797,6 +797,8 @@ class Agent:
         """PIT_AWARE_FIGHT: where we last were in a pit (trap.c climb_pit: only move attempts get us out)."""
         here = (*self.current_level().key(), self.blstats.y, self.blstats.x)
         msg = self.message
+        if 'hit by a boulder' in msg or 'boulder falls into the pit with you' in msg:
+            self._astra_pit_boulder_hit = (here, self.blstats.time)
         if 'You crawl to the edge of the pit' in msg:
             self._in_pit_at = None
         elif any(s in msg for s in self._PIT_IN):
@@ -2592,7 +2594,13 @@ class Agent:
                     continue
                 dy, dx = int(np.sign(dy)), int(np.sign(dx))
                 hits = list(combat.fight_heur.simulate_wand_path(self, wand, monsters, dy, dx))
-                if any(target in ('self', 'pet', 'peaceful') and prob > 0
+                # A nearby minotaur can kill this lightly developed Healer before another action.
+                # Accept a self-reflection gamble only against that immediate threat, alone nearby.
+                minotaur_emergency = mon.mname == 'minotaur' and \
+                    max(abs(y - self.blstats.y), abs(x - self.blstats.x)) == 1 and \
+                    self.blstats.hitpoints <= 60 and sum(m[0] <= 3 for m in monsters) == 1
+                forbidden = ('pet', 'peaceful') if minotaur_emergency else ('self', 'pet', 'peaceful')
+                if any(target in forbidden and prob > 0
                        for _, _, target, prob in hits if isinstance(target, str)):
                     continue
                 if not any((hy, hx) == (y, x) and target is not None for hy, hx, target, prob in hits):
@@ -2742,6 +2750,53 @@ class Agent:
         if self.glyphs[y, x] not in G.BOULDER:
             self._astra_meat_target = (level.key(), y, x, self.blstats.time)
 
+    def astra_deep_blind_cure_due(self):
+        """Restore sight before raven blindness disables guarded digging."""
+        prop = self.character.prop
+        return self.character.role == Character.HEALER and self.global_logic.dive.diving and \
+            self.blstats.depth >= 10 and prop.blind and not (prop.polymorph or prop.confusion or prop.stun) and \
+            self.blstats.hunger_state < Hunger.WEAK and self.blstats.energy >= 15 and \
+            'extra healing' in self.character.known_spells and \
+            self.character.spell_fail_chance.get('extra healing', 1) <= .35 and \
+            self.blstats.time - getattr(self, '_astra_blind_cure_turn', -100) >= 20
+
+    def astra_pit_boulder_target(self):
+        prop = self.character.prop
+        bl = self.blstats
+        dive = self.global_logic.dive
+        key = self.current_level().key()
+        record = getattr(self, '_astra_pit_boulder_hit', None)
+        if self.character.role != Character.HEALER or not dive.diving or bl.depth < 10 or \
+                prop.blind or prop.hallu or prop.confusion or prop.stun or prop.polymorph or \
+                not self.in_pit() or record is None or \
+                record[0] != (*key, bl.y, bl.x) or bl.time - record[1] > 15:
+            return None
+        monsters = self.get_visible_monsters()
+        dis = self.bfs()
+        def exposed(y, x):
+            return sum(max(abs(m[1] - y), abs(m[2] - x)) <= 1 for m in monsters)
+        current_exposure = exposed(bl.y, bl.x)
+        candidates = []
+        for y, x in zip(*np.nonzero(dis == 1)):
+            y, x = int(y), int(x)
+            if self.monster_tracker.monster_mask[y, x] or self.glyphs[y, x] in G.PETS:
+                continue
+            danger = exposed(y, x)
+            if danger > current_exposure:
+                continue
+            separation = min((max(abs(m[1] - y), abs(m[2] - x)) for m in monsters), default=10)
+            candidates.append((danger, -separation, y, x))
+        return min(candidates)[2:] if candidates else None
+
+    @Strategy.wrap
+    def astra_pit_boulder_escape(self):
+        target = self.astra_pit_boulder_target()
+        if target is None:
+            yield False
+        yield True
+        # Climbing may take several attempts; a stationary result is expected.
+        self.direction(self.calc_direction(self.blstats.y, self.blstats.x, *target))
+
     @utils.debug_log('emergency_strategy')
     @Strategy.wrap
     def emergency_strategy(self):
@@ -2759,6 +2814,11 @@ class Agent:
                 yield True
                 self.inventory.quaff(max(potions, key=lambda i: strength[i.object.name]))
                 return
+        if self.astra_deep_blind_cure_due():
+            yield True
+            self._astra_blind_cure_turn = self.blstats.time
+            self.cast('extra healing', direction=(0, 0))
+            return
         sleep_target = self.astra_sleep_target()
         if sleep_target is not None:
             yield True
