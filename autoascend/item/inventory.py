@@ -1646,7 +1646,7 @@ class Inventory:
             self.pickup(mine)
         self.items.update(force=True)
 
-    # Buy a plain suit only into an empty slot. Reserve gold for food and
+    # Buy a plain suit into an empty slot or for a two-point AC upgrade. Reserve gold for food and
     # payment, exclude ambiguous magical armor, and pay before equipping.
     SHOP_STARTER_SUITS = {'leather armor', 'studded leather armor', 'ring mail',
                          'scale mail', 'chain mail', 'splint mail', 'banded mail',
@@ -1665,6 +1665,10 @@ class Inventory:
                     continue
                 if not item.price or item.price > self.agent.blstats.gold - 200 or item.get_ac() > -3:
                     continue
+                current = self.items.suit
+                if current is not None and (not current.is_unambiguous() or current.status == Item.CURSED
+                                            or item.get_ac() > current.get_ac() - 2):
+                    continue
                 score = -item.get_ac() - dis[y, x] / 20 - item.price / 1000
                 if best is None or score > best[0]:
                     best = (score, int(y), int(x), item.object.name)
@@ -1675,7 +1679,8 @@ class Inventory:
     def buy_starter_suit(self):
         agent = self.agent
         bl = agent.blstats
-        if self.items.suit is not None or self.items.cloak is not None or agent.hands_welded():
+        if (self.items.suit is not None and self.items.suit.status == Item.CURSED) or \
+                self.items.cloak is not None or agent.hands_welded():
             yield False
         if bl.gold < 220 or bl.hitpoints < bl.max_hitpoints * .8 or bl.hunger_state >= Hunger.HUNGRY:
             yield False
@@ -1708,8 +1713,13 @@ class Inventory:
         self.pay_or_drop_unpaid()
         owned = [i for i in self.items if i.shop_status == Item.NOT_SHOP
                  and i.is_unambiguous() and i.object.name == name and i.status != Item.CURSED]
-        if owned and self.items.suit is None and self.items.cloak is None:
-            self.wear(owned[0])
+        if owned and self.items.cloak is None:
+            if self.items.suit is not None:
+                if self.items.suit.status == Item.CURSED:
+                    return
+                self.takeoff(self.items.suit)
+            if self.items.suit is None:
+                self.wear(owned[0])
 
     @utils.debug_log('inventory.buy_food')
     @Strategy.wrap
