@@ -18,6 +18,7 @@ from .exceptions import AgentPanic, AgentFinished, AgentChangeStrategy
 from .exploration_logic import ExplorationLogic
 from .global_logic import GlobalLogic
 from .glyph import MON, C, Hunger, G, SHOP, SS
+from . import objects as O
 from .item import Item, flatten_items
 from .item.inventory import Inventory
 from .level import Level
@@ -2740,6 +2741,8 @@ class Agent:
                 yield False
             yield True
             self.inventory.takeoff(remove)
+            # Refresh observed odds before removing any further armor.
+            self.character.parse_spellcast_view()
             return
         yield True
         self._astra_food_undressed_until = -1

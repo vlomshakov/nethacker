@@ -1,6 +1,6 @@
 {
   "schema": "nethackers.solution/v1",
-  "name": "astra-human-healer-expedition-xl4-v5",
+  "name": "astra-human-healer-food-fix-v6",
   "root": "autoascend",
   "parents": [
     "github.com/vlomshakov/nethacker@9ef4063cf36fa1d26416d11e83ef7fb1575e9ada"
