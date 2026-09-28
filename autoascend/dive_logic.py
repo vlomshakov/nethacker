@@ -2501,6 +2501,17 @@ class DiveLogic:
                     if 'fills with' in agent.message and key == self.medusa_level:
                         self._medusa_floods += 1
             return
+        if what == 'stairs':
+            start = (agent.blstats.y, agent.blstats.x)
+            try:
+                if start == arg:
+                    agent.move('>')
+                else:
+                    agent.go_to(*arg, max_steps=1)
+            finally:
+                if agent.current_level().key() == level.key() and (agent.blstats.y, agent.blstats.x) == start:
+                    self._dig_walk_blocked_until = agent.blstats.time + 5
+            return
         if what == 'step':
             agent.log(f'DIVE walking to dig at {arg}, hostiles at {[(m[3].mname, int(m[0])) for m in monsters[:3]]}')
             start = (agent.blstats.y, agent.blstats.x)
@@ -2536,6 +2547,17 @@ class DiveLogic:
         wand = next((i for i in agent.inventory.items if i.is_wand() and i.is_unambiguous() and
                      i.object == O.from_name('digging', nh.WAND_CLASS) and
                      not agent.inventory.is_known_empty(i)), None) if DIG_WAND_ESCAPE else None
+        # A reachable staircase can beat a gnome's long digging occupation.
+        # Reconsider after each step; do not walk away from adjacent attackers.
+        prop = agent.character.prop
+        if agent.character.race == Character.GNOME and bl.depth >= 10 and not adjacent and \
+                bl.hitpoints >= .65 * bl.max_hitpoints and not agent.in_pit() and \
+                not (prop.blind or prop.confusion or prop.stun or prop.polymorph) and \
+                bl.time >= self._dig_walk_blocked_until:
+            stairs = [t for t in self.down_targets() if t[3] == 'stairs' and t[0] <= 12]
+            if stairs:
+                _, y, x, _ = stairs[0]
+                return ('stairs', (y, x))
         # A blind digger being hit cannot rely on a readable engraving or
         # finish an interrupted occupation. Use an instant escape or combat.
         if agent.character.prop.blind and agent._hurt_recently(2):
