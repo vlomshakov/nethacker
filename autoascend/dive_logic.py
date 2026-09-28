@@ -1335,6 +1335,11 @@ class DiveLogic:
             self._task('portal sweep')
             return self.portal_sweep()
 
+        # A tool-less Mines search can overshoot the entrance. Return before
+        # the XP gate starts clearing a deeper main-dungeon level.
+        if self.astra_return_to_branch():
+            return
+
         if self.should_explore_fully():
             self._task('explore fully')
             if EXPLORE_BUDGETS:
@@ -2112,6 +2117,18 @@ class DiveLogic:
         # an unexplored candidate level, or all explored but the hidden-branch search not yet begun
         return BRANCH_HIDDEN_TURNS > 0 or any((Level.DUNGEONS_OF_DOOM, d) not in self.fully_explored
                                               for d in range(2, MINES_BRANCH_MAX_DEPTH + 1))
+
+    def astra_return_to_branch(self):
+        # A known candidate already has an explicit route; preserve that path.
+        if self._mines_branch_target() is not None:
+            return False
+        if not self.diving or not FAST_BRANCH or not BRANCH_FIX2 or not self.use_mines():
+            return False
+        level = self.agent.current_level()
+        if level.dungeon_number != Level.DUNGEONS_OF_DOOM or not \
+                MINES_BRANCH_MAX_DEPTH < self.agent.blstats.depth <= MINES_BRANCH_MAX_DEPTH + BRANCH_CLIMB_MAX:
+            return False
+        return self._climb_back_for_branch()
 
     def _climb_back_for_branch(self):
         """Below Dlvl 4 with the branch search unfinished: climb back (BRANCH_CLIMB_MAX levels at most).
