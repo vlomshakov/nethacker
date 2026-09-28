@@ -928,7 +928,7 @@ class Inventory:
             is_dragonscale_armor = item.object.metal == O.DRAGON_HIDE
 
             allowed_statuses = [Item.UNCURSED, Item.BLESSED] + ([Item.UNKNOWN] if allow_unknown_status else [])
-            if item.status not in allowed_statuses and not is_dragonscale_armor:
+            if item.status not in allowed_statuses and not is_dragonscale_armor and not (item.equipped and item.status == Item.UNKNOWN):
                 continue
 
             slot = item.object.sub
@@ -1645,6 +1645,71 @@ class Inventory:
         if mine:
             self.pickup(mine)
         self.items.update(force=True)
+
+    # Buy a plain suit only into an empty slot. Reserve gold for food and
+    # payment, exclude ambiguous magical armor, and pay before equipping.
+    SHOP_STARTER_SUITS = {'leather armor', 'studded leather armor', 'ring mail',
+                         'scale mail', 'chain mail', 'splint mail', 'banded mail',
+                         'elven mithril-coat', 'dwarvish mithril-coat'}
+
+    def _starter_suit_for_sale(self, dis):
+        level = self.agent.current_level()
+        best = None
+        for y, x in zip(*(level.shop_interior & (level.item_count > 0)).nonzero()):
+            if dis[y, x] < 0 or dis[y, x] > 12:
+                continue
+            for item in level.items[y, x]:
+                if item.shop_status != Item.FOR_SALE or not item.is_unambiguous():
+                    continue
+                if item.object.name not in self.SHOP_STARTER_SUITS or item.status == Item.CURSED:
+                    continue
+                if not item.price or item.price > self.agent.blstats.gold - 200 or item.get_ac() > -3:
+                    continue
+                score = -item.get_ac() - dis[y, x] / 20 - item.price / 1000
+                if best is None or score > best[0]:
+                    best = (score, int(y), int(x), item.object.name)
+        return best
+
+    @utils.debug_log('inventory.buy_starter_suit')
+    @Strategy.wrap
+    def buy_starter_suit(self):
+        agent = self.agent
+        bl = agent.blstats
+        if self.items.suit is not None or self.items.cloak is not None or agent.hands_welded():
+            yield False
+        if bl.gold < 220 or bl.hitpoints < bl.max_hitpoints * .8 or bl.hunger_state >= Hunger.HUNGRY:
+            yield False
+        if agent._carries_digging_tool() or (agent.character.teleportitis and not agent.character.teleport_control):
+            yield False
+        if any(m[3].mname != 'floating eye' for m in agent.get_visible_monsters()):
+            yield False
+        if any(i.shop_status == Item.UNPAID for i in flatten_items(self.items)):
+            yield False
+        target = self._starter_suit_for_sale(agent.bfs())
+        if target is None:
+            yield False
+        _, y, x, name = target
+        key = (agent.current_level().key(), y, x)
+        if key in getattr(self, '_starter_suit_attempts', set()):
+            yield False
+        yield True
+        if not hasattr(self, '_starter_suit_attempts'):
+            self._starter_suit_attempts = set()
+        self._starter_suit_attempts.add(key)
+        agent.go_to(y, x)
+        if (agent.blstats.y, agent.blstats.x) != (y, x):
+            return
+        items = [i for i in self.items_below_me if i.shop_status == Item.FOR_SALE
+                 and i.is_unambiguous() and i.object.name == name]
+        if not items:
+            return
+        agent.log(f'SHOP buying starter suit {name}')
+        self.pickup(items[0], 1)
+        self.pay_or_drop_unpaid()
+        owned = [i for i in self.items if i.shop_status == Item.NOT_SHOP
+                 and i.is_unambiguous() and i.object.name == name and i.status != Item.CURSED]
+        if owned and self.items.suit is None and self.items.cloak is None:
+            self.wear(owned[0])
 
     @utils.debug_log('inventory.buy_food')
     @Strategy.wrap

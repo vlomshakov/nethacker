@@ -2172,8 +2172,11 @@ class Agent:
                     actions = attack_actions
 
             if not actions:
-                # nothing possible (cornered, inventory unknown): let a turn pass instead of a panic loop
-                # that freezes the game clock until the no-progress timeout (an s6 dive, T38441)
+                # Empty action sets are stalls, not intentional defensive waits.
+                # Let the existing bounded passive-monster release logic run
+                # before yielding another turn; otherwise it is bypassed forever.
+                if self._fight_stall_turns():
+                    self._note_fight_stall(('blocked',), monsters)
                 self.search()
                 continue
 

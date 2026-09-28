@@ -902,6 +902,7 @@ class GlobalLogic:
                            self.dive.edible_corpse_within(jf_config.DIVE_EAT_RADIUS)),
                 self.agent.eat_from_inventory().every(5),
                 self.agent.inventory.buy_food().every(3),
+                self.agent.inventory.buy_starter_suit().every(3),
                 # power (SELL_PRICE_ID): offer unknown potions/rings/boots to a shopkeeper for their price group
                 self.agent.inventory.sell_price_identify().every(3),
             ])
