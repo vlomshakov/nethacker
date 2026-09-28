@@ -1,9 +1,9 @@
 {
   "schema": "nethackers.solution/v1",
-  "name": "astra-human-healer-food-fix-v6",
+  "name": "astra-human-healer-floating-eye-guard-v9",
   "root": "autoascend",
   "parents": [
-    "github.com/vlomshakov/nethacker@9ef4063cf36fa1d26416d11e83ef7fb1575e9ada"
+    "github.com/vlomshakov/nethacker@1757b9ba2f7c4fbfe41a2d598204ebeebd3c80b2"
   ],
   "influences": [
     "github.com/DT6A/nethacker@59ce30c509ef568366fe846afeba03dede939339",

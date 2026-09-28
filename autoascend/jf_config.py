@@ -361,7 +361,7 @@ DEMON_VIGIL_RADIUS = 5
 DEMON_VIGIL_TURNS = 400
 # fight2 never melees a floating eye we can see (the exploration stall breaker's attack-all mode did: 401
 # paralysis events in 223 dev games, 35 games died frozen)
-FEYE_FIX = False
+FEYE_FIX = True
 # no Excalibur dips during a water demon's vigil window (the bot went back to the fountain next to the demon)
 DEMON_NO_REDIP = False
 # the last resort (unknown wands/potions/scrolls) yields to the Elbereth rest while everything close respects
