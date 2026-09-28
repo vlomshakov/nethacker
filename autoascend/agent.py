@@ -2579,7 +2579,7 @@ class Agent:
         monsters = self.get_visible_monsters()
         threats = [m for m in monsters if m[0] <= 3 and
                    hasattr(m[3], 'mlevel') and hasattr(m[3], 'mresists') and
-                   (m[3].mlevel >= 3 or (m[3].mlevel >= 1 and
+                   (m[3].mname in ('wererat', 'werejackal', 'werewolf') or m[3].mlevel >= 3 or (m[3].mlevel >= 1 and
                     self.blstats.hitpoints < self.blstats.max_hitpoints * 0.6)) and
                    not (m[3].mresists & 4)]  # MR_SLEEP from NetHack monflag.h
         if not threats:
