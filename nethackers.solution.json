@@ -1,9 +1,9 @@
 {
   "schema": "nethackers.solution/v1",
-  "name": "astra-human-healer-early-were-sleep-v14",
+  "name": "astra-human-healer-stalled-pet-v23",
   "root": "autoascend",
   "parents": [
-    "github.com/vlomshakov/nethacker@89e012fcc1057f3b89fedc8afaef45415a1871ff"
+    "github.com/vlomshakov/nethacker@f6671444d0bfa1602c706ce7f0496177c0a9d028"
   ],
   "influences": [
     "github.com/DT6A/nethacker@59ce30c509ef568366fe846afeba03dede939339",

@@ -321,8 +321,8 @@ EARLY_DIVE_XL = 4
 # corpses (497 meals vs our 732) and made ~10% of the kills (no XP for us); food is what the grind runs
 # out of (hunger prayers, their failures, starvation). Take it down to Dlvl 2 and come back up alone
 # (a pet only follows when adjacent, and can't climb stairs on its own).
-DITCH_PET = False
-DITCH_PET_AFTER = 300          # turns into the game (Dlvl 1 explored, its '>' known)
+DITCH_PET = True
+DITCH_PET_AFTER = 1200          # turns into the game (Dlvl 1 explored, its '>' known)
 DITCH_PET_BUDGET = 300
 DWARF_HUNT_TURNS = 400         # per level
 # a dive leaving the Mines without a digging tool explores each Mines level (not Minetown) this long
@@ -3109,6 +3109,8 @@ class DiveLogic:
         level = agent.current_level()
         first = (Level.DUNGEONS_OF_DOOM, 1)
         if self._ditch_state == 0:
+            if bl.experience_level > 1:
+                yield False
             if level.key() != first or not agent.has_pet or bl.time < DITCH_PET_AFTER or \
                     agent.get_visible_monsters() or bl.hitpoints < 0.8 * bl.max_hitpoints:
                 yield False

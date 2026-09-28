@@ -13,3 +13,5 @@ v6 fixes the observed missing O import in food-making armor handling and refresh
 v9 enables the inherited floating-eye combat filter. It preserves the existing fed, nearly-full-health, lone-eye stall escape and ranged/blindfold options.
 
 v14 extends the existing close-threat sleep-wand rule to visible wererats, werejackals and werewolves before health drops below60%. Human diagnostic losses repeatedly engage wererats until potions run out. Keeps the existing charge, resistance, cooldown, alignment and ray-safety checks.
+
+v23 independently applies bounded pet separation only when still XL1 after1200 turns. The global early separation in v12 was rejected. This tests the repeated XP1 stalled-leveling failure while preserving the pet for ordinarily progressing games. Existing health, visible-enemy, known-stair and300-turn budget guards remain.
