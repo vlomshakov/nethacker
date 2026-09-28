@@ -500,6 +500,18 @@ def get_priorities(agent):
     #         priority += get_corridors_priority_map(walkable)
     #         break
 
+    # Avoid accumulating melee contacts while lightly armored and seeking a tool.
+    if agent.character.role == agent.character.HEALER and 2 <= agent.blstats.depth <= 8 and \
+            agent.blstats.armor_class >= 5 and agent.global_logic.dive.digging_tool() is None and \
+            agent.current_level().dungeon_number == 0 and \
+            sum(0 <= m[0] <= 3 for m in monsters) >= 3 and \
+            all(getattr(m[3], 'mlevel', 99) <= 1 for m in monsters if 0 <= m[0] <= 3):
+        for _, my, mx, mon, _ in monsters:
+            if getattr(mon, 'mmove', 0) <= 0:
+                continue
+            for y, x in agent.neighbors(my, mx, shuffle=False):
+                priority[y, x] -= 12
+
     # use relative priority to te current position
     priority -= priority[agent.blstats.y, agent.blstats.x]
 
