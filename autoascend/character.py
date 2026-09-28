@@ -64,21 +64,26 @@ class Property:
     def __init__(self, agent):
         self.agent = agent
 
+    # The tty status line abbreviates conditions when it gets long (e.g. 'Hallu' -> 'Hl'),
+    # so read them from the blstats condition bitmask instead.
+    def _condition(self, mask):
+        return bool(self.agent.last_observation['blstats'][nh.NLE_BL_CONDITION] & mask)
+
     @property
     def confusion(self):
-        return 'Conf' in bytes(self.agent.last_observation['tty_chars'][-1]).decode()
+        return self._condition(nh.BL_MASK_CONF)
 
     @property
     def stun(self):
-        return 'Stun' in bytes(self.agent.last_observation['tty_chars'][-1]).decode()
+        return self._condition(nh.BL_MASK_STUN)
 
     @property
     def hallu(self):
-        return 'Hallu' in bytes(self.agent.last_observation['tty_chars'][-1]).decode()
+        return self._condition(nh.BL_MASK_HALLU)
 
     @property
     def blind(self):
-        return 'Blind' in bytes(self.agent.last_observation['tty_chars'][-1]).decode()
+        return self._condition(nh.BL_MASK_BLIND)
 
     @property
     def polymorph(self):
@@ -274,17 +279,113 @@ class Character:
         self.upgradable_skills = dict()
 
         self.is_lycanthrope = False
+        # 'rat' / 'jackal' / 'wolf' (were.c were_beastie families), None if unknown (LYCAN_FIXES)
+        self.lycanthrope_kind = None
+        # HP before the current polymorph: while polymorphed, blstats show the form's HP, and that form
+        # dying only rehumanizes us (polyself.c rehumanize) back to this HP (LYCAN_FIXES)
+        self.hp_before_poly = None
+        self._was_polymorphed = False
+        # intrinsics from corpses (eat.c cpostfx), attrcurse takes them away: read by jf_config.SHOP_GUARD
+        self.teleportitis = False
+        self.teleport_control = False
+
+    def _track_teleport(self, msg):
+        # eat.c cpostfx: 'You feel very jumpy.' (hallucinating: 'diffuse.') gives teleportitis, 'You feel in control
+        # of yourself.' ('centered in your personal space.') teleport control; sit.c attrcurse: 'You feel less jumpy.'
+        if 'You feel very jumpy' in msg or 'You feel diffuse' in msg:
+            if not self.teleportitis:
+                self.agent.log('INTRINSIC teleportitis')
+            self.teleportitis = True
+        if 'You feel less jumpy' in msg:
+            self.teleportitis = False
+        if 'You feel in control of yourself' in msg or 'centered in your personal space' in msg:
+            self.teleport_control = True
+
+    _WERE_KIND = re.compile(r'\bwere(rat|jackal|wolf)\b')
+    _TURN_INTO_WERE = re.compile(r'You turn into an? were(rat|jackal|wolf)!')
 
     def update(self):
-        if 'You feel feverish.' in self.agent.message:
+        from . import jf_config
+        if not jf_config.LYCAN_FIXES:
+            if 'You feel feverish.' in self.agent.message:
+                self.is_lycanthrope = True
+            if 'You feel purified.' in self.agent.message:
+                self.is_lycanthrope = False
+            self._track_teleport(self.agent.message)
+            return
+        # every message since the last update: infections and changes happen inside atomic operations
+        # (fights, searches), and the old check of the last message alone missed some of them
+        history = self.agent._message_history
+        start = getattr(self, '_history_seen', 0)
+        if start > len(history):   # a fresh agent after a driver restart
+            start = 0
+        self._history_seen = len(history)
+        msg = ' '.join(history[start:] + [self.agent.message])
+        self._track_teleport(msg)
+        # infected while fainted or asleep the message is 'You dream that you feel feverish.' (75 of 591
+        # infections in the dev runs): the old exact match never saw it, so no cure prayer came and the
+        # bot went on eating jackal corpses (jf25 s10: 'You cannibal!', Luck -2..-5, next prayer failed)
+        pos = msg.rfind('feel feverish')
+        if pos >= 0:
             self.is_lycanthrope = True
-        if 'You feel purified.' in self.agent.message:
+            # the bite may come a turn earlier than the fever ('The wererat bites!' T9061, 'You feel
+            # feverish.' T9062 in public s4): look a few messages back for the biter
+            context = ' '.join(history[max(0, start - 8):start]) + ' ' + msg[:pos]
+            kinds = self._WERE_KIND.findall(context)
+            self.lycanthrope_kind = kinds[-1] if kinds else None
+            self.agent.log(f'LYCAN infected (kind {self.lycanthrope_kind})')
+        m = None
+        for m in self._TURN_INTO_WERE.finditer(msg):
+            pass
+        if m is not None:
+            if not self.is_lycanthrope or self.lycanthrope_kind != m.group(1):
+                self.agent.log(f'LYCAN changed into a were{m.group(1)}')
+            self.is_lycanthrope = True
+            self.lycanthrope_kind = m.group(1)
+        if 'You feel purified' in msg[max(pos, 0):]:
             self.is_lycanthrope = False
+            self.lycanthrope_kind = None
+            self.agent.log('LYCAN cured')
+        polymorphed = self.prop.polymorph
+        if polymorphed and not self._was_polymorphed:
+            bl = self.agent.blstats
+            # the last HP seen before the change (this step already shows the new form's HP)
+            self.hp_before_poly = getattr(self, '_last_normal_hp', None)
+            self.agent.log(f'POLY changed form; HP before: {self.hp_before_poly} now {bl.hitpoints}/{bl.max_hitpoints}')
+        if not polymorphed:
+            bl = self.agent.blstats
+            self._last_normal_hp = (bl.hitpoints, bl.max_hitpoints)
+            self.hp_before_poly = None
+        self._was_polymorphed = polymorphed
+
+    def were_family(self):
+        """Corpse species that are cannibalism for us now (eat.c maybe_cannibal: were_beastie(pm) ==
+        u.ulycn): the whole family of our lycanthropy, or of all three when we don't know which."""
+        families = {'rat': ('sewer rat', 'giant rat', 'rabid rat', 'wererat'),
+                    'jackal': ('jackal', 'fox', 'coyote', 'werejackal'),
+                    'wolf': ('wolf', 'warg', 'winter wolf', 'werewolf')}
+        if not self.is_lycanthrope:
+            return ()
+        if self.lycanthrope_kind in families:
+            return families[self.lycanthrope_kind]
+        return tuple(n for names in families.values() for n in names)
+
+    def poly_hp_is_buffer(self):
+        """Polymorphed (a were form) with healthy HP to return to: the form's low HP is no emergency
+        -- when it hits 0 we just rehumanize (polyself.c) with the HP we had before the change."""
+        if not self.prop.polymorph or self.hp_before_poly is None:
+            return False
+        hp, maxhp = self.hp_before_poly
+        return hp >= max(12, maxhp / 3)
 
     @property
     def carrying_capacity(self):
         # TODO: levitation, etc
-        return min(1000, (self.agent.blstats.strength_percentage + self.agent.blstats.constitution) * 25 + 50)
+        cap = min(1000, (self.agent.blstats.strength_percentage + self.agent.blstats.constitution) * 25 + 50)
+        # UNSQUEEZE: boxed in by diagonal squeezes (hack.c cant_squeeze_thru: > 600 carried), keep under 600
+        if self.agent.blstats.time < getattr(self.agent, '_squeeze_cap_until', -1):
+            cap = min(cap, 550)
+        return cap
 
     def parse(self):
         with self.agent.atom_operation():
@@ -299,7 +400,8 @@ class Character:
             alignment, _, gender, race, role = matches[0]
         else:
             matches = re.findall(
-                'You are an? ([a-zA-Z ]+), a level (\d+) (([a-z]+) )?([a-z]+) ([A-Z][a-z]+). *You are ([a-z]+)',
+                # rank titles can contain hyphens (a Valkyrie at XL 10-13 is a "Woman-at-arms")
+                'You are an? ([a-zA-Z -]+), a level (\d+) (([a-z]+) )?([a-z]+) ([A-Z][a-z]+). *You are ([a-z]+)',
                 text)
             assert len(matches) == 1, repr(text)
             _, _, _, gender, race, role, alignment = matches[0]

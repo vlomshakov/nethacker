@@ -1,0 +1,9 @@
+# Astra human Healer
+
+Derived from the v272 AutoAscend policy by vlomshakov, with upstream lineage retained in nethackers.solution.json. AutoAscend and upstream contributions retain their licenses.
+
+Uses the observation-driven survival and movement principles of kenforthewin/nethack_astra; no LLM, remote terminal or model API is used at runtime.
+
+v1 enables the existing Mines tool-acquisition route for human Healers. All existing healing, recovery, branch, combat and return checks remain. Target identity is hea-hum-neu-fem; results must be measured separately from the gnome policy.
+
+v5 independently tests v1 with the tool expedition at experience level 4 instead of 3. This compares shorter food exposure against better preparation for the hostile human Mines. All other behavior is unchanged.
