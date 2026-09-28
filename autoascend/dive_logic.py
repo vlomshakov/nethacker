@@ -2554,7 +2554,9 @@ class DiveLogic:
                 bl.hitpoints >= .65 * bl.max_hitpoints and not agent.in_pit() and \
                 not (prop.blind or prop.confusion or prop.stun or prop.polymorph) and \
                 bl.time >= self._dig_walk_blocked_until:
-            stairs = [t for t in self.down_targets() if t[3] == 'stairs' and t[0] <= 12]
+            nearest = min((m[0] for m in monsters if m[0] >= 0), default=float('inf'))
+            stairs = [t for t in self.down_targets()
+                      if t[3] == 'stairs' and t[0] <= 12 and t[0] + 1 < nearest]
             if stairs:
                 _, y, x, _ = stairs[0]
                 return ('stairs', (y, x))

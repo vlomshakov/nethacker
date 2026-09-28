@@ -1,6 +1,6 @@
 {
   "schema": "nethackers.solution/v1",
-  "name": "astra-healer-combat-stairs-v245",
+  "name": "astra-healer-stair-head-start-v248",
   "root": "autoascend",
   "parents": [
     "github.com/daglar-dragomirov/nethacker@8ce023a8f681e7366d5f54ca419f314ac874ac59"
