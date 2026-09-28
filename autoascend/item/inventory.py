@@ -8,7 +8,7 @@ import numpy as np
 from nle.nethack import actions as A
 
 from autoascend import objects as O, utils
-from autoascend import power
+from autoascend import power, ascension_wishes
 from autoascend.character import Character
 from autoascend.exceptions import AgentPanic
 from autoascend.glyph import G, MON, Hunger
@@ -78,6 +78,8 @@ class Inventory:
     def _droppable(self, item):
         """arrange_items may drop it. With SCARE_KEEP a carried scroll that may be scare monster stays: a heavy
         armour swap dropped all light loot and picked it up again (base-jf26 s14: 'The scroll turns to dust')."""
+        if ascension_wishes.keep(self.agent, item):
+            return False
         if not item.can_be_dropped_from_inventory():
             return False
         return not (power.keep_scroll(item) and item in self.items.all_items)
@@ -120,15 +122,13 @@ class Inventory:
         self.item_manager.update()
         self.items.update()
 
-        if (getattr(self, '_astra_blind_floor_skipped', False) and not self.agent.character.prop.blind) or \
-                self._previous_blstats is None or \
+        if self._previous_blstats is None or \
                 (self._previous_blstats.y, self._previous_blstats.x, \
                  self._previous_blstats.level_number, self._previous_blstats.dungeon_number) != \
                 (self.agent.blstats.y, self.agent.blstats.x, \
                  self.agent.blstats.level_number, self.agent.blstats.dungeon_number) or \
                 (self.engraving_below_me is None or self.engraving_below_me.lower() == 'elbereth'):
-            assume_appropriate_message = self._previous_blstats is not None and not self.engraving_below_me and \
-                not getattr(self, '_astra_blind_floor_skipped', False)
+            assume_appropriate_message = self._previous_blstats is not None and not self.engraving_below_me
 
             self._previous_blstats = self.agent.blstats
             self.items_below_me = None
@@ -535,15 +535,6 @@ class Inventory:
         assert not items
 
     def get_items_below_me(self, assume_appropriate_message=False):
-        # NetHack invent.c look_here returns a spent turn when blind.
-        # Floor metadata must not silently grant monsters another attack.
-        if self.agent.character.prop.blind:
-            self._astra_blind_floor_skipped = True
-            self.items_below_me = []
-            self.letters_below_me = []
-            self.engraving_below_me = ''
-            return []
-        self._astra_blind_floor_skipped = False
         with self.agent.panic_if_position_changes():
             with self.agent.atom_operation():
                 if not assume_appropriate_message:
@@ -937,7 +928,9 @@ class Inventory:
             if self.agent.character.role == Character.MONK and slot == O.ARM_SUIT:
                 continue
 
-            if best_ac[slot] is None or best_ac[slot] > ac:
+            priority = ascension_wishes.armor_priority(self.agent, item)
+            current = ascension_wishes.armor_priority(self.agent, best_items[slot]) if best_items[slot] else -1
+            if best_ac[slot] is None or priority > current or (priority == current and best_ac[slot] > ac):
                 best_ac[slot] = ac
                 best_items[slot] = item
 
@@ -953,6 +946,7 @@ class Inventory:
                 .before(self.check_containers())
                 .before(self.wear_best_stuff())
                 .before(self.wand_engrave_identify())
+                .before(ascension_wishes.maintain(self.agent))
                 .before(self.use_spare_wishes())
                 .before(self.wear_life_saving())
                 .before(self.go_to_unchecked_containers())
@@ -1152,7 +1146,7 @@ class Inventory:
             yield False  # TODO: only for handless monsters (which cannot write)
 
         self.skip_engrave_counter -= 1
-        if self.agent.character.prop.blind or self.skip_engrave_counter > 0 or self.agent.hands_welded():
+        if self.agent.character.prop.blind or self.skip_engrave_counter > 0 or self.agent.no_free_hand():
             yield False
             return
         yielded = False
@@ -1222,7 +1216,7 @@ class Inventory:
     @Strategy.wrap
     def wear_life_saving(self):
         """SPARE_WISHES: put on a known amulet of life saving (a wish) when no amulet is worn."""
-        if not jf_config.SPARE_WISHES or self.agent.character.prop.polymorph or \
+        if ascension_wishes.active(self.agent) or not jf_config.SPARE_WISHES or self.agent.character.prop.polymorph or \
                 any(i.category == nh.AMULET_CLASS and i.equipped for i in self.items):
             yield False
             return
@@ -1244,6 +1238,8 @@ class Inventory:
 
     def _engrave_single_wand(self, item):
         """ Returns possible objects or None if current tile not suitable for identification."""
+        # WISH_TELEPORT_ROUTE: a wish prompt during the engrave-test comes from a wand of wishing (>= 2 wishes)
+        self.agent._last_wand_use_step = self.agent.step_count
 
         def msg():
             return self.agent.message
@@ -1340,8 +1336,6 @@ class Inventory:
     @utils.debug_log('inventory.wear_best_stuff')
     @Strategy.wrap
     def wear_best_stuff(self):
-        if self.agent.blstats.time < getattr(self.agent, '_astra_food_undressed_until', -1) and not self.agent.get_visible_monsters():
-            yield False
         if self.agent.hands_welded():
             yield False   # armor can't come off (or go on over it) with the hands welded
             return

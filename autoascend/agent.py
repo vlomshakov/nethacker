@@ -12,6 +12,7 @@ from nle.nethack import actions as A
 from . import combat
 from . import jf_config, jf_log, jf_scenario
 from . import power
+from . import power_route
 from . import utils
 from .character import Character
 from .exceptions import AgentPanic, AgentFinished, AgentChangeStrategy
@@ -116,9 +117,6 @@ class Agent:
         self.stats_logger = StatsLogger()
 
     def log(self, msg):
-        if any(tag in msg for tag in ('PRAY', 'DIVE phase', 'SHOP buying', 'ALIGN estimate', 'STARVE', 'HUNGER')):
-            bl = getattr(self, 'blstats', None)
-            print(f'ASTRA_EVENT t{bl.time if bl else "?"} {msg}', file=sys.stderr, flush=True)
         if jf_log.enabled():
             bl = getattr(self, 'blstats', None)
             where = f't{bl.time} d{bl.depth} {bl.dungeon_number}:{bl.level_number} xl{bl.experience_level} ' \
@@ -412,6 +410,17 @@ class Agent:
                 self._faint_msg_turn = None
         return done
 
+    def _note_poly_control(self):
+        """The game asked 'Become what kind of monster?': polymorph control, from one of the rings worn now (or an
+        intrinsic when none is). dive_logic.xorn_repoly zaps the wand of polymorph again only while these rings are
+        still on (a bolt of lightning turned jf16-s0~13's ruby ring to dust on Gehennom 5)."""
+        self._poly_control_turn = self.blstats.time
+        try:
+            self._poly_control_rings = frozenset(self.inventory.items.get_letter(i) for i in self.inventory.items
+                                                 if i.category == nh.RING_CLASS and i.equipped)
+        except Exception:
+            self._poly_control_rings = None
+
     def step(self, action, additional_action_iterator=None):
         if self._no_step_calls:
             raise ValueError("Shouldn't call step now")
@@ -442,6 +451,16 @@ class Agent:
     def update(self, observation, additional_action_iterator=None):
         self._observation = observation
         done = self.update_message_and_popup(observation)
+        # TC_ROUTE (power_route.py): TC prompts, the tengu intrinsic and read effects are learned before the prompt
+        # handling below answers them
+        power_route.note_message(self)
+        if jf_config.CFP_XORN or jf_config.CFP_INVIS or jf_config.VALLEY_XORN:
+            # castle-first-pass: our polymorph form (and invisibility) from the messages (an invisible hero's square
+            # shows no form glyph); VALLEY_XORN needs 'You return to dwarven form!' too: without it a lapsed xorn kept
+            # walking into the Valley's walls ('It's a wall.') while a troll beat it to death (vxx2 s2; s4, s6 with
+            # vampire bats)
+            from . import castle_cross
+            castle_cross.note_message(self)
 
         self._is_reading_message_or_popup = True
         if additional_action_iterator is not None:
@@ -473,15 +492,44 @@ class Agent:
 
         if observation['misc'][1] and self._text_prompt_escapes < 5:  # entering text
             if "You may wish for an object." in self.message:
-                # TODO: assume wished item as blessed
-                # SPARE_WISHES / castle_logic (agent.wish_purpose): GDSM first, then the Castle passage
-                # castle_logic may set agent.wish_text (an explicit wish) and/or agent.wish_purpose
+                from . import ascension_wishes
                 purpose = getattr(self, 'wish_purpose', None)
-                text = getattr(self, 'wish_text', None) or \
-                    (power.wish_text(self, purpose) if (jf_config.SPARE_WISHES or purpose) else power.WISH_GDSM)
+                text = ascension_wishes.begin(self, purpose)
                 self.log(f'POWER wishing for {text!r}')
                 power.note_wish(self, text)
                 self.step(text[0], iter(text[1:] + '\r'))
+                return
+            elif jf_config.LEVELPORT_DEEP and 'To what level do you want to teleport?' in self.single_message and \
+                    hasattr(self, 'blstats') and self.blstats.dungeon_number in (0, 1) and \
+                    self._text_prompt_escapes == 0:
+                # teleport control (teleport.c level_tele): from the Dungeons any level past the castle is
+                # find_hell() -- the Valley, castle+1 -- and from Gehennom level 50 exactly, or the vibrating-square
+                # level (bottom-1) when that is shallower. 50 is the top of the progress table (Dlvl 51 is not in
+                # it: harness wr2-unknown seeds 5 and 11 landed on 51 and scored only their Valley). ESC cancels the
+                # teleport, and a level teleporter is used up before it asks.
+                self.log('LEVELPORT controlled level teleport: asking for level 50')
+                self._text_prompt_escapes += 1   # one answer per prompt; a re-ask falls back to ESC
+                self.step('5', iter('0\r'))
+                return
+            elif jf_config.POLY_XORN and 'Become what kind of monster?' in self.single_message and \
+                    self._text_prompt_escapes == 0 and power_route.on_castle_level(self):
+                # polymorph control (polyself.c): ESC here means '*', a random form. On the castle ask for a xorn:
+                # M1_WALLWALK and castle.des has no NON_PASSWALL, so it walks through the walls to the trap doors
+                # (40..55,08) and falls through (not a flyer). Elsewhere today's random form stays.
+                self.log('POLY controlled polymorph on the castle: xorn')
+                self._text_prompt_escapes += 1
+                self._note_poly_control()
+                self.step('x', iter('orn\r'))
+                return
+            elif jf_config.VALLEY_XORN and 'Become what kind of monster?' in self.single_message and \
+                    self._text_prompt_escapes == 0 and self.global_logic.dive.in_gehennom():
+                # VALLEY_XORN (dive_logic.xorn_repoly): the xorn form ran out in Gehennom and the wand of polymorph
+                # was zapped at us again -- a xorn again (the Valley's walls and the stone around its map, a buffer
+                # of form HP over ours while the dig-dive goes on)
+                self.log('POLY controlled polymorph in Gehennom: xorn')
+                self._text_prompt_escapes += 1
+                self._note_poly_control()
+                self.step('x', iter('orn\r'))
                 return
             else:
                 # a text-entry flag that survives ESC after ESC recursed update->step->update until
@@ -613,8 +661,6 @@ class Agent:
                 func()
 
     def _update_level_items(self):
-        if getattr(self.inventory, '_astra_blind_floor_skipped', False):
-            return  # Unknown floor contents are not evidence that remembered items vanished.
         level = self.current_level()
 
         level.items[self.blstats.y, self.blstats.x] = self.inventory.items_below_me
@@ -797,8 +843,6 @@ class Agent:
         """PIT_AWARE_FIGHT: where we last were in a pit (trap.c climb_pit: only move attempts get us out)."""
         here = (*self.current_level().key(), self.blstats.y, self.blstats.x)
         msg = self.message
-        if 'hit by a boulder' in msg or 'boulder falls into the pit with you' in msg:
-            self._astra_pit_boulder_hit = (here, self.blstats.time)
         if 'You crawl to the edge of the pit' in msg:
             self._in_pit_at = None
         elif any(s in msg for s in self._PIT_IN):
@@ -1369,7 +1413,6 @@ class Agent:
         self.step(A.Command.PRAY)
         self.last_prayer_turn = self.blstats.time
         messages = ' '.join(self._message_history[history_len:] + [self.message])
-        self.log(f'PRAY_RESULT {messages}')
         if any(msg in messages for msg in self.PRAYER_FAILURE_MESSAGES):
             self.prayer_failed = True
         elif any(msg in messages for msg in self.PRAYER_SUCCESS_MESSAGES):
@@ -1483,6 +1526,7 @@ class Agent:
         # astra: an empty wand prints "Nothing happens" without asking for a direction, and a blindly
         # queued direction key then becomes a move or a melee attack. Only answer the prompt if it's
         # there, and remember wands that turned out empty.
+        self._last_wand_use_step = self.step_count   # WISH_TELEPORT_ROUTE: a wish from a wand
         with self.atom_operation():
             self.step(A.Command.ZAP)
             if 'carrying so much stuff' in self.message:
@@ -1645,10 +1689,21 @@ class Agent:
             return False
         return self.is_safe_to_pray(jf_config.WELD_PRAY_GAP)
 
+    def no_free_hand(self):
+        """The engraving check: engrave.c freehand() with FREEHAND_FIX (a welded one-hander beside an uncursed shield
+        still leaves a hand to write with), else hands_welded() (any shield counts)."""
+        if not jf_config.FREEHAND_FIX:
+            return self.hands_welded()
+        main = self.inventory.items.main_hand
+        if main is None or main.status != Item.CURSED:
+            return False
+        shield = self.inventory.items.off_hand
+        return bool(getattr(main.objs[0], 'bi', False)) or (shield is not None and shield.status == Item.CURSED)
+
     def can_engrave(self):
         if self.character.prop.polymorph:
             return False  # TODO: only for handless monsters (which cannot write)
-        if self.hands_welded():
+        if self.no_free_hand():
             return False
         return (self.blstats.y, self.blstats.x) != self._forbidden_engrave_position
 
@@ -1982,13 +2037,6 @@ class Agent:
         again once adjacent (unless passive), after FIGHT_IGNORE_TURNS, or when something hurts us (only those
         within 3 when any is: a sleeping zoo further off stays let go)."""
         monsters = self.get_visible_monsters()
-        # Ghosts are slow and difficult for an inexperienced Healer to hit.
-        # Keep adjacent ones in the escape calculation; do not pursue distant
-        # ones while the hero can gain experience against other creatures.
-        if self.character.role == Character.HEALER and self.blstats.experience_level < 4:
-            monsters = [m for m in monsters if m[3].mname != 'ghost' or
-                        utils.adjacent((self.blstats.y, self.blstats.x), (m[1], m[2]))]
-
         # the Valley's graveyards: their sleepers are left alone unless they attack (dive.VALLEY_GRAVE_FILTER)
         monsters = self.global_logic.dive.valley_fight_filter(monsters)
         if self._fight_stall_turns() <= 0 or not self._fight_ignored:
@@ -2123,7 +2171,7 @@ class Agent:
                 yielded = True
                 yield True
                 self.character.parse_enhance_view()
-                self.character.parse_spellcast_view()
+                # self.character.parse_spellcast_view()
 
             move_priority_heatmap, actions = combat.fight_heur.get_priorities(self)
             actions.extend(combat.fight_heur.get_move_actions(self, dis, move_priority_heatmap))
@@ -2367,11 +2415,7 @@ class Agent:
             getattr(permonst, 'cnutrit', 0) >= 50
 
         # TODO: read intrinsics
-        # NetHack attrib.c hea_abil grants poison resistance at experience level 1.
-        # Keep the independent acid, petrification, cannibalism and freshness checks.
-        innate_poison_resistance = (self.character.race == Character.ORC or
-                                    self.character.role == Character.HEALER)
-        if not innate_poison_resistance and permonst.mflags1 & MON.M1_POIS != 0 and not starving and \
+        if self.character.race != Character.ORC and permonst.mflags1 & MON.M1_POIS != 0 and not starving and \
                 not poison_ok:
             return False
 
@@ -2569,274 +2613,66 @@ class Agent:
         low_hp = hp_ratio < 0.5 and (self.blstats.max_hitpoints - self.blstats.hitpoints > 25)
         return self.blstats.energy >= 15 and low_hp
 
-    def astra_sleep_target(self):
-        """Use the starting sleep wand against a close threat, checking reflected rays."""
-        if self.character.role != Character.HEALER or self.character.prop.blind or self.character.prop.hallu:
-            return None
-        if self.blstats.time - getattr(self, '_astra_sleep_turn', -100) < 12:
-            return None
-        monsters = self.get_visible_monsters()
-        threats = [m for m in monsters if m[0] <= 3 and
-                   hasattr(m[3], 'mlevel') and hasattr(m[3], 'mresists') and
-                   (m[3].mlevel >= 3 or (m[3].mlevel >= 1 and
-                    self.blstats.hitpoints < self.blstats.max_hitpoints * 0.6)) and
-                   not (m[3].mresists & 4)]  # MR_SLEEP from NetHack monflag.h
-        if not threats:
-            return None
-        for wand in self.inventory.items:
-            if not (wand.is_wand() and wand.is_unambiguous() and wand.object.name == 'sleep'):
-                continue
-            if self.inventory.is_known_empty(wand) or (wand.uses and ':0' in str(wand.uses)):
-                continue
-            for _, y, x, mon, glyph in threats:
-                dy, dx = y - self.blstats.y, x - self.blstats.x
-                if not (dy == 0 or dx == 0 or abs(dy) == abs(dx)):
-                    continue
-                dy, dx = int(np.sign(dy)), int(np.sign(dx))
-                hits = list(combat.fight_heur.simulate_wand_path(self, wand, monsters, dy, dx))
-                # A nearby minotaur can kill this lightly developed Healer before another action.
-                # Accept a self-reflection gamble only against that immediate threat, alone nearby.
-                minotaur_emergency = mon.mname == 'minotaur' and \
-                    max(abs(y - self.blstats.y), abs(x - self.blstats.x)) == 1 and \
-                    self.blstats.hitpoints <= 60 and sum(m[0] <= 3 for m in monsters) == 1
-                forbidden = ('pet', 'peaceful') if minotaur_emergency else ('self', 'pet', 'peaceful')
-                if any(target in forbidden and prob > 0
-                       for _, _, target, prob in hits if isinstance(target, str)):
-                    continue
-                if not any((hy, hx) == (y, x) and target is not None for hy, hx, target, prob in hits):
-                    continue
-                return wand, self.calc_direction(self.blstats.y, self.blstats.x,
-                                                 self.blstats.y + dy, self.blstats.x + dx)
+    def _sickness_remedy(self):
+        """A ready, identified cure; ordinary uncursed healing does not cure sickness.
+
+        NLE 1.3.0 uses NetHack 3.6.7: potion.c healup() cures sickness for
+        blessed healing or noncursed extra/full healing. A noncursed unicorn
+        horn can fail, so prefer a guaranteed potion and recheck after each use.
+        Only ready items are considered: opening bags spends the fatal timer.
+        """
+        # The inherited parser deliberately changes unknown BUC to UNCURSED.
+        # Require the actual inventory description to show its beatitude.
+        ready = []
+        for item in self.inventory.items:
+            buc = re.match(r'^(?:a|an|the|\d+) (blessed|uncursed)\b', item.text or '')
+            if item.is_unambiguous() and buc:
+                ready.append((item, buc.group(1)))
+        potions = [i for i, buc in ready if i.category == nh.POTION_CLASS and
+                   (i.object.name in ('extra healing', 'full healing') or
+                    (i.object.name == 'healing' and buc == 'blessed'))]
+        if potions:
+            strength = {'healing': 0, 'extra healing': 1, 'full healing': 2}
+            return 'quaff', max(potions, key=lambda i: strength[i.object.name])
+        blocked = getattr(self, '_unusable_sickness_horns', set())
+        horns = [(i, buc) for i, buc in ready if i.category == nh.TOOL_CLASS and
+                 i.object.name == 'unicorn horn' and
+                 (i.text, self.character.prop.polymorph) not in blocked]
+        if horns:
+            return 'apply', max(horns, key=lambda entry: entry[1] == 'blessed')[0]
         return None
 
-    @Strategy.wrap
-    def astra_quiet_recovery(self):
-        bl = self.blstats
-        if self.character.role != Character.HEALER or self.character.prop.polymorph or self.character.prop.blind or \
-                bl.depth > 5 or self.global_logic.dive.digging_tool() is not None or \
-                bl.time < getattr(self, '_astra_rest_after', -1) or \
-                bl.hitpoints >= 0.65 * bl.max_hitpoints or bl.hunger_state >= Hunger.HUNGRY or \
-                self.get_visible_monsters():
-            yield False
-        yield True
-        previous_hp = bl.hitpoints
-        for _ in range(160):
-            bl = self.blstats
-            if self.get_visible_monsters() or bl.hunger_state >= Hunger.HUNGRY or \
-                    bl.hitpoints >= 0.85 * bl.max_hitpoints or bl.hitpoints < previous_hp:
-                break
-            previous_hp = bl.hitpoints
-            self.search()
-        self._astra_rest_after = self.blstats.time + 20
+    def _apply_sickness_horn(self, item):
+        letter = self.inventory.items.get_letter(item)
+        answered = [False]
 
-    @Strategy.wrap
-    def astra_boulder_food(self):
-        """Convert an adjacent boulder to food using the Healer's known spell.
+        def answer():
+            if 'What do you want to use or apply?' in self.single_message:
+                answered[0] = True
+                yield letter
 
-        NetHack zap.c stone_to_flesh_obj turns BOULDER into HUGE_CHUNK_OF_MEAT.
-        Never target statues (which can animate), shops or Sokoban boulders.
-        """
-        bl = self.blstats
-        level = self.current_level()
-        if self.character.role != Character.HEALER or self.character.prop.blind or \
-                self.character.prop.hallu or self.character.prop.polymorph or \
-                self.character.prop.confusion or self.character.prop.stun or self.get_visible_monsters() or \
-                level.dungeon_number == Level.SOKOBAN or bl.hunger_state < Hunger.HUNGRY:
-            yield False
-        target = getattr(self, '_astra_meat_target', None)
-        if target is not None:
-            key, y, x, turn = target
-            if key != level.key() or bl.time - turn > 40 or level.shop[y, x]:
-                self._astra_meat_target = None
-                yield False
-            if (bl.y, bl.x) != (y, x):
-                if self.bfs()[y, x] < 0:
-                    self._astra_meat_target = None
-                    yield False
-                yield True
-                self.go_to(y, x, max_steps=1)
-                return
-            chunks = [i for i in (self.inventory.items_below_me or [])
-                      if i.is_unambiguous() and i.object.name == 'huge chunk of meat' and
-                      i.shop_status == Item.NOT_SHOP]
-            self._astra_meat_target = None
-            if not chunks:
-                yield False
-            yield True
-            self.log('HUNGER eating freshly created boulder meat')
-            self.inventory.eat(chunks[0])
-            return
-        spell = 'stone to flesh'
-        if spell not in self.character.known_spells or \
-                bl.energy < 15 or \
-                bl.hunger_state >= Hunger.FAINTING or self.carried_food_nutrition() >= 800 or \
-                bl.time - getattr(self, '_astra_food_cast_turn', -100) < 30:
-            yield False
-        target = None
-        approach = None
-        dis = self.bfs()
-        for y, x in zip(*utils.isin(self.glyphs, G.BOULDER).nonzero()):
-            y, x = int(y), int(x)
-            if level.shop[y, x]:
-                continue
-            if max(abs(y-bl.y), abs(x-bl.x)) != 1:
-                neighbours = [(yy, xx) for yy in range(max(0,y-1), min(self.glyphs.shape[0],y+2))
-                              for xx in range(max(0,x-1), min(self.glyphs.shape[1],x+2))
-                              if 0 < dis[yy, xx] <= 6 and not level.shop[yy, xx]]
-                if neighbours:
-                    pos = min(neighbours, key=lambda pos: dis[pos])
-                    if approach is None or dis[pos] < dis[approach]:
-                        approach = pos
-                continue
-            dy, dx = y-bl.y, x-bl.x
-            safe = True
-            for distance in range(1, 9):
-                yy, xx = bl.y+dy*distance, bl.x+dx*distance
-                if not (0 <= yy < self.glyphs.shape[0] and 0 <= xx < self.glyphs.shape[1]):
-                    break
-                glyph = self.glyphs[yy, xx]
-                if glyph in G.STATUES or glyph in G.PETS or glyph in G.MONS or level.shop[yy, xx]:
-                    safe = False
-                    break
-                if distance > 1 and not level.walkable[yy, xx] and glyph not in G.BOULDER:
-                    break
-            if safe:
-                target = (y, x, dy, dx)
-                break
-        if target is None:
-            if approach is None:
-                yield False
-            yield True
-            self.go_to(*approach, max_steps=1)
-            return
-        # If metal armor makes the food spell unreliable, remove one
-        # removable obstructing piece at a time, only beside the boulder.
-        failure = self.character.spell_fail_chance.get(spell, 1)
-        if failure > .5:
-            if bl.hitpoints < .6 * bl.max_hitpoints or self.hands_welded():
-                yield False
-            if bl.time >= getattr(self, '_astra_food_undressed_until', -1):
-                if bl.time < getattr(self, '_astra_food_strip_after', -1):
-                    yield False
-                self._astra_food_undressed_until = bl.time + 40
-                self._astra_food_strip_after = bl.time + 300
-            worn = self.inventory.items
-            remove = None
-            for slot in ('off_hand', 'helm', 'boots', 'suit'):
-                item = getattr(worn, slot, None)
-                if item is None or not item.is_armor() or not item.is_unambiguous() or \
-                        item.status not in (Item.UNCURSED, Item.BLESSED) or \
-                        item.object.metal not in (O.IRON, O.METAL, O.COPPER, O.SILVER, O.GOLD, O.MITHRIL) or \
-                        item.object.name == 'helm of brilliance':
-                    continue
-                if slot == 'suit' and worn.cloak is not None:
-                    if worn.cloak.status not in (Item.UNCURSED, Item.BLESSED):
-                        continue
-                    item = worn.cloak
-                remove = item
-                break
-            if remove is None:
-                self._astra_food_undressed_until = -1
-                yield False
-            yield True
-            self.inventory.takeoff(remove)
-            return
-        yield True
-        self._astra_food_undressed_until = -1
-        y, x, dy, dx = target
-        self._astra_food_cast_turn = bl.time
-        self.log('HUNGER casting stone to flesh on an adjacent boulder')
-        self.cast(spell, (dy, dx))
-        if self.glyphs[y, x] not in G.BOULDER:
-            self._astra_meat_target = (level.key(), y, x, self.blstats.time)
-
-    def astra_deep_blind_cure_due(self):
-        """Restore sight before raven blindness disables guarded digging."""
-        prop = self.character.prop
-        return self.character.role == Character.HEALER and self.global_logic.dive.diving and \
-            self.blstats.depth >= 10 and prop.blind and not (prop.polymorph or prop.confusion or prop.stun) and \
-            self.blstats.hunger_state < Hunger.WEAK and self.blstats.energy >= 15 and \
-            'extra healing' in self.character.known_spells and \
-            self.character.spell_fail_chance.get('extra healing', 1) <= .35 and \
-            self.blstats.time - getattr(self, '_astra_blind_cure_turn', -100) >= 20
-
-    def astra_pit_boulder_target(self):
-        prop = self.character.prop
-        bl = self.blstats
-        dive = self.global_logic.dive
-        key = self.current_level().key()
-        record = getattr(self, '_astra_pit_boulder_hit', None)
-        if self.character.role != Character.HEALER or not dive.diving or bl.depth < 10 or \
-                prop.blind or prop.hallu or prop.confusion or prop.stun or prop.polymorph or \
-                not self.in_pit() or record is None or \
-                record[0] != (*key, bl.y, bl.x) or bl.time - record[1] > 15:
-            return None
-        monsters = self.get_visible_monsters()
-        dis = self.bfs()
-        def exposed(y, x):
-            return sum(max(abs(m[1] - y), abs(m[2] - x)) <= 1 for m in monsters)
-        current_exposure = exposed(bl.y, bl.x)
-        candidates = []
-        for y, x in zip(*np.nonzero(dis == 1)):
-            y, x = int(y), int(x)
-            if self.monster_tracker.monster_mask[y, x] or self.glyphs[y, x] in G.PETS:
-                continue
-            danger = exposed(y, x)
-            if danger > current_exposure:
-                continue
-            separation = min((max(abs(m[1] - y), abs(m[2] - x)) for m in monsters), default=10)
-            candidates.append((danger, -separation, y, x))
-        return min(candidates)[2:] if candidates else None
-
-    @Strategy.wrap
-    def astra_pit_boulder_escape(self):
-        target = self.astra_pit_boulder_target()
-        if target is None:
-            yield False
-        yield True
-        # Climbing may take several attempts; a stationary result is expected.
-        self.direction(self.calc_direction(self.blstats.y, self.blstats.x, *target))
+        with self.atom_operation():
+            self.step(A.Command.APPLY, answer())
+        if not answered[0] or 'You have no hands' in self.message:
+            # Do not loop on a refused command that may consume no turn.
+            # A form change permits another attempt with this same horn.
+            if not hasattr(self, '_unusable_sickness_horns'):
+                self._unusable_sickness_horns = set()
+            self._unusable_sickness_horns.add((item.text, self.character.prop.polymorph))
 
     @utils.debug_log('emergency_strategy')
     @Strategy.wrap
     def emergency_strategy(self):
-        # Astra's health-first rule: heal before the next adjacent attack can
-        # cross the old one-third-HP threshold. Potions are reliable in armor.
-        if self.character.role == Character.HEALER and not self.character.prop.polymorph and \
-                self.blstats.hitpoints < self.blstats.max_hitpoints and \
-                self.blstats.hitpoints < max(12, 0.65 * self.blstats.max_hitpoints) and \
-                any(m[0] <= 2 for m in self.get_visible_monsters()):
-            strength = {'healing': 1, 'extra healing': 2, 'full healing': 3}
-            potions = [i for i in self.inventory.items if i.is_unambiguous() and
-                       i.category == nh.POTION_CLASS and i.object.name in strength and
-                       i.status != Item.CURSED and i.shop_status == Item.NOT_SHOP]
-            if potions:
-                yield True
-                self.inventory.quaff(max(potions, key=lambda i: strength[i.object.name]))
-                return
-        if self.astra_deep_blind_cure_due():
-            yield True
-            self._astra_blind_cure_turn = self.blstats.time
-            self.cast('extra healing', direction=(0, 0))
-            return
-        sleep_target = self.astra_sleep_target()
-        if sleep_target is not None:
-            yield True
-            self._astra_sleep_turn = self.blstats.time
-            self.zap(*sleep_target)
-            return
 
-        # Healers know recovery magic from the start. Reuse current observed
-        # spell failure rates and conserve potions for depleted energy.
-        if self.should_cast_extra_heal():
-            yield True
-            self.cast('extra healing', direction=(0, 0))
-            return
+        # if self.should_cast_extra_heal():
+        #     yield True
+        #     self.cast('extra healing', direction=(0, 0))
+        #     return
 
-        if self.should_cast_heal():
-            yield True
-            self.cast('healing', direction=(0, 0))
-            return
+        # if self.should_cast_heal():
+        #     yield True
+        #     self.cast('healing', direction=(0, 0))
+        #     return
 
         # hypothesis (astra guard.py stop list): stoning, sliming, strangling and food poisoning /
         # terminal illness kill within a few turns; prayer fixes all of them, so a riskier-than-usual
@@ -2853,6 +2689,18 @@ class Agent:
                     yield True
                     self.log('EMERGENCY stoning: eating a lizard corpse')
                     self.inventory.eat(lizards[0])
+                    return
+            if (deadly & (nh.BL_MASK_FOODPOIS | nh.BL_MASK_TERMILL) and
+                    not deadly & (nh.BL_MASK_STONE | nh.BL_MASK_SLIME | nh.BL_MASK_STRNGL)):
+                remedy = self._sickness_remedy()
+                if remedy is not None:
+                    yield True
+                    action, item = remedy
+                    self.log(f'EMERGENCY sickness: {action} {item.text!r}')
+                    if action == 'quaff':
+                        self.inventory.quaff(item)
+                    else:
+                        self._apply_sickness_horn(item)
                     return
             if self.current_level().dungeon_number != 1 and self.is_safe_to_pray(100, certain_death=True):
                 yield True
@@ -3297,7 +3145,7 @@ class Agent:
                         for field in ('role', 'race', 'alignment', 'gender', 'self_glyph'):
                             setattr(self.character, field, getattr(prev, field))
                     self.character.parse_enhance_view()
-                    self.character.parse_spellcast_view()
+                    # self.character.parse_spellcast_view()
                     self.step(A.Command.AUTOPICKUP)
                     if 'Autopickup: ON' in self.message:
                         self.step(A.Command.AUTOPICKUP)

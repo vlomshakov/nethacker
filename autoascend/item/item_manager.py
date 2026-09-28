@@ -265,7 +265,7 @@ class ItemManager:
             r'( ([+-]\d+))? '
             r"([a-zA-z0-9-!'# ]+)"
             r'( \((?:\d+ aum, )?([0-9]+:[0-9]+|no charge)\))?'   # '(20 aum, no charge)': a free glob in a shop
-            r'( \(([a-zA-Z0-9; ]+(, flickering|, gleaming|, glimmering)?[a-zA-Z0-9; ]*)\))?'
+            r'( \(([a-zA-Z0-9; ]+(, flickering|, gleaming|, glimmering|, lit)?[a-zA-Z0-9; ]*)\))?'
             r'( \((for sale|unpaid), (\d+ aum, )?((\d+)[a-zA-Z- ]+|no charge)\))?'
             r'$',
             text)
@@ -297,6 +297,10 @@ class ItemManager:
         elif info in {'at the ready', 'in quiver', 'in quiver pouch', 'lit'}:
             equipped = False
             at_ready = True
+        elif re.fullmatch(r'(?:no|[0-7]) candles?(?: attached|, lit)', info):
+            # objnam.c: the unique Candelabrum includes its candle state.
+            equipped = False
+            at_ready = False
         elif info in {'', 'alternate weapon; not wielded', 'alternate weapon; notwielded'}:
             equipped = False
             at_ready = False
@@ -414,7 +418,10 @@ class ItemManager:
             else:
                 name = naming
 
-        if name == 'Excalibur':
+        if name in ('The Orb of Fate', 'Orb of Fate'):
+            naming = 'The Orb of Fate'
+            name = 'crystal ball'
+        elif name == 'Excalibur':
             name = 'long sword'
             dmg_bonus = 5.5  # 1d10
             to_hit_bonus = 3  # 1d5
@@ -519,6 +526,9 @@ class ItemManager:
             name = 'flint'
         elif name in ['unlabeled scroll', 'unlabeled scrolls', 'blank paper']:
             name = 'scroll of blank paper'
+        elif name == 'Book of the Dead':
+            # objnam.c prints this unique spellbook without the usual prefix.
+            name = 'spellbook of Book of the Dead'
         elif name == 'eucalyptus leaves':
             name = 'eucalyptus leaf'
         elif name == 'pair of lenses':

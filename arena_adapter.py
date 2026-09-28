@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import contextlib
+import copy
 import ctypes
 import queue
 import threading
@@ -111,14 +112,14 @@ class AutoAscendDriver:
 
     # Timing: the arena kills a bot (and zeroes the episode) when one act() takes over 120 s.
     # Only the episode's first action may need a cold numba JIT compile (up to FIRST_ACTION_TIMEOUT);
-    # afterwards the worst case is HANG + RECOVER + RESTART = 85 + 5 + 20 = 110 s. Compilation may occur after the initial ESC, so every action
-    # needs compilation headroom. 110 seconds leaves ten seconds below the
-    # arena deadline, including hang recovery and restart.
+    # afterwards the worst case is HANG + RECOVER + RESTART = 20 + 5 + 20 = 45 s. The hang threshold
+    # stays well above slow-but-legit actions under CPU contention (p99 of per-episode max ~16 s,
+    # mostly the cold first action), so it only fires on real livelocks.
     FIRST_ACTION_TIMEOUT = 100.0
     RECOVER_TIMEOUT = 5.0
     RESTART_TIMEOUT = 20.0
 
-    def __init__(self, action_timeout: float = 100.0, hang_timeout: float = 85.0) -> None:
+    def __init__(self, action_timeout: float = 100.0, hang_timeout: float = 20.0) -> None:
         self._action_timeout = action_timeout
         self._hang_timeout = hang_timeout
         self._warm = False  # set once any agent in this process produced an action
@@ -149,6 +150,13 @@ class AutoAscendDriver:
         self._agent.resumed_game = not fresh_game
         if not fresh_game and previous is not None:
             self._agent.previous_character = previous.character
+            # These are bounded memories of public actions, not inferred game
+            # internals. A driver recovery must not reset recharge/wrest limits
+            # or revert to the parent's downward teleport wish policy.
+            for name in ('_ascension_wish_active', '_ascension_wrest_attempts',
+                         '_ascension_inventory_attempts'):
+                if hasattr(previous, name):
+                    setattr(self._agent, name, copy.deepcopy(getattr(previous, name)))
         self._thread = threading.Thread(target=self._run_agent, args=(self._agent,), name="autoascend",
                                         daemon=True)
         self._thread.start()

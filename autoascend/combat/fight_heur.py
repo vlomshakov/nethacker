@@ -59,11 +59,6 @@ def melee_monster_priority(agent, monsters, monster):
         ret += 15
     if wielding_ranged_weapon(agent) and not is_monster_faster(agent, monster):
         ret -= 6
-    if mon.mname == 'ghost' and agent.character.role == agent.character.HEALER and \
-            agent.blstats.experience_level < 4:
-        # A legal retreat beats an extended low-probability melee fight.
-        # If cornered, an attack remains available.
-        ret -= 25
     if mon.mname in EXPLODING_MONSTERS:
         ret -= 17
     if 'were' in mon.mname:
@@ -209,31 +204,31 @@ def _simulate_wand_path(agent, wand, monsters, y, x, dy, dx, range_left, hit_tar
         return
 
     for y, x, dy, dx, next_prob, range_penalty in get_next_states(agent, wand, y, x, dy, dx):
-        branch_range = range_left - range_penalty
+        range_left -= range_penalty
         monster = [m for m in monsters if m[1] == y and m[2] == x]
         if monster:
             assert len(monster) == 1
             monster = monster[0]
             # For each monster hit, range decreases by 2.
-            branch_range -= 2
+            range_left -= 2
         elif inside(agent, y, x) and agent.glyphs[y, x] in G.PETS:
             monster = 'pet'
             # For each monster hit, range decreases by 2.
-            branch_range -= 2
+            range_left -= 2
         elif inside(agent, y, x) and agent.glyphs[y, x] in G.MONS and (y, x) != (agent.blstats.y, agent.blstats.x):
             # a monster that isn't a known hostile: a peaceful (a lightning bolt at a wraith hit a watch
             # captain and the Watch killed the XL10)
             monster = 'peaceful'
-            branch_range -= 2
+            range_left -= 2
         elif agent.blstats.y == y and agent.blstats.x == x:
             monster = 'self'
-            branch_range -= 2
+            range_left -= 2
         else:
             monster = None
 
         hit_targets[(y, x, monster)] += probability * next_prob
 
-        _simulate_wand_path(agent, wand, monsters, y, x, dy, dx, branch_range - 1, hit_targets, probability * next_prob)
+        _simulate_wand_path(agent, wand, monsters, y, x, dy, dx, range_left - 1, hit_targets, 1.0)
 
 
 def simulate_wand_path(agent, wand, monsters, dy, dx):
@@ -499,18 +494,6 @@ def get_priorities(agent):
     #     if ord(mon.mlet) == MON.S_ANT:
     #         priority += get_corridors_priority_map(walkable)
     #         break
-
-    # Avoid accumulating melee contacts while lightly armored and seeking a tool.
-    if agent.character.role == agent.character.HEALER and 2 <= agent.blstats.depth <= 8 and \
-            agent.blstats.armor_class >= 5 and agent.global_logic.dive.digging_tool() is None and \
-            agent.current_level().dungeon_number == 0 and \
-            sum(0 <= m[0] <= 3 for m in monsters) >= 3 and \
-            all(getattr(m[3], 'mlevel', 99) <= 1 for m in monsters if 0 <= m[0] <= 3):
-        for _, my, mx, mon, _ in monsters:
-            if getattr(mon, 'mmove', 0) <= 0:
-                continue
-            for y, x in agent.neighbors(my, mx, shuffle=False):
-                priority[y, x] -= 12
 
     # use relative priority to te current position
     priority -= priority[agent.blstats.y, agent.blstats.x]
