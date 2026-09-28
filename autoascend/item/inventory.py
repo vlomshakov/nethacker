@@ -1646,7 +1646,7 @@ class Inventory:
             self.pickup(mine)
         self.items.update(force=True)
 
-    # Buy a plain suit into an empty slot or for a two-point AC upgrade. Reserve gold for food and
+    # Buy a plain suit into an empty slot or for a one-point AC upgrade. Reserve gold for food and
     # payment, exclude ambiguous magical armor, and pay before equipping.
     SHOP_STARTER_SUITS = {'leather armor', 'studded leather armor', 'ring mail',
                          'scale mail', 'chain mail', 'splint mail', 'banded mail',
@@ -1667,7 +1667,7 @@ class Inventory:
                     continue
                 current = self.items.suit
                 if current is not None and (not current.is_unambiguous() or current.status == Item.CURSED
-                                            or item.get_ac() > current.get_ac() - 2):
+                                            or item.get_ac() > current.get_ac() - 1):
                     continue
                 score = -item.get_ac() - dis[y, x] / 20 - item.price / 1000
                 if best is None or score > best[0]:
