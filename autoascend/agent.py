@@ -613,6 +613,8 @@ class Agent:
                 func()
 
     def _update_level_items(self):
+        if getattr(self.inventory, '_astra_blind_floor_skipped', False):
+            return  # Unknown floor contents are not evidence that remembered items vanished.
         level = self.current_level()
 
         level.items[self.blstats.y, self.blstats.x] = self.inventory.items_below_me

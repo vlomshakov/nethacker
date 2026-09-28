@@ -120,13 +120,15 @@ class Inventory:
         self.item_manager.update()
         self.items.update()
 
-        if self._previous_blstats is None or \
+        if (getattr(self, '_astra_blind_floor_skipped', False) and not self.agent.character.prop.blind) or \
+                self._previous_blstats is None or \
                 (self._previous_blstats.y, self._previous_blstats.x, \
                  self._previous_blstats.level_number, self._previous_blstats.dungeon_number) != \
                 (self.agent.blstats.y, self.agent.blstats.x, \
                  self.agent.blstats.level_number, self.agent.blstats.dungeon_number) or \
                 (self.engraving_below_me is None or self.engraving_below_me.lower() == 'elbereth'):
-            assume_appropriate_message = self._previous_blstats is not None and not self.engraving_below_me
+            assume_appropriate_message = self._previous_blstats is not None and not self.engraving_below_me and \
+                not getattr(self, '_astra_blind_floor_skipped', False)
 
             self._previous_blstats = self.agent.blstats
             self.items_below_me = None
@@ -533,6 +535,15 @@ class Inventory:
         assert not items
 
     def get_items_below_me(self, assume_appropriate_message=False):
+        # NetHack invent.c look_here returns a spent turn when blind.
+        # Floor metadata must not silently grant monsters another attack.
+        if self.agent.character.prop.blind:
+            self._astra_blind_floor_skipped = True
+            self.items_below_me = []
+            self.letters_below_me = []
+            self.engraving_below_me = ''
+            return []
+        self._astra_blind_floor_skipped = False
         with self.agent.panic_if_position_changes():
             with self.agent.atom_operation():
                 if not assume_appropriate_message:
