@@ -366,7 +366,7 @@ FEYE_FIX = True
 DEMON_NO_REDIP = False
 # the last resort (unknown wands/potions/scrolls) yields to the Elbereth rest while everything close respects
 # Elbereth and we are on one or can engrave (a zap erased it, a bounced ray / potion of sickness killed at 2-3 HP)
-LR_ELBERETH = False
+LR_ELBERETH = True
 # the Elbereth rest never hides from a lone monster one blow kills (difficulty <= 2, not fast), at any HP
 REST_FIGHT_WEAK = False
 # never kill a gas spore whose blast reaches any @ (or anything in Minetown); its melee is filtered out of fight2

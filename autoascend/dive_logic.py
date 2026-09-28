@@ -2552,7 +2552,7 @@ class DiveLogic:
         # A reachable staircase can beat a gnome's long digging occupation.
         # Reconsider after each step; do not walk away from adjacent attackers.
         prop = agent.character.prop
-        if agent.character.race == Character.GNOME and bl.depth >= 10 and not adjacent and \
+        if agent.character.race in (Character.GNOME, Character.HUMAN) and bl.depth >= 10 and not adjacent and \
                 bl.hitpoints >= .65 * bl.max_hitpoints and not agent.in_pit() and \
                 not (prop.blind or prop.confusion or prop.stun or prop.polymorph) and \
                 bl.time >= self._dig_walk_blocked_until:
