@@ -2807,12 +2807,14 @@ class Agent:
                 not self.character.prop.polymorph and not self.astra_deep_blind_cure_due() and \
                 self.blstats.time - getattr(self, '_astra_blind_potion_turn', -100) >= 5:
             cures = [i for i in self.inventory.items if i.is_unambiguous() and
-                     i.category == nh.POTION_CLASS and i.object.name in ('extra healing', 'full healing') and
+                     i.category == nh.POTION_CLASS and
+                     (i.object.name in ('extra healing', 'full healing') or
+                      (i.object.name == 'healing' and i.status == Item.BLESSED)) and
                      i.status != Item.CURSED and i.shop_status == Item.NOT_SHOP]
             if cures:
                 yield True
                 self._astra_blind_potion_turn = self.blstats.time
-                self.inventory.quaff(min(cures, key=lambda i: i.object.name == 'full healing'))
+                self.inventory.quaff(min(cures, key=lambda i: ('healing', 'extra healing', 'full healing').index(i.object.name)))
                 return
         # Astra's health-first rule: heal before the next adjacent attack can
         # cross the old one-third-HP threshold. Potions are reliable in armor.

@@ -28,3 +28,6 @@ the first evaluation for an immutable commit. All trial records remain local.
 
 Final descent setting: prefer nearby stairs within three squares through depth
 11; use the original eight-square stair preference starting at depth 12.
+
+Blindness recovery also accepts positively identified blessed ordinary healing.
+Unblessed ordinary healing is excluded from this sight-restoration strategy.
