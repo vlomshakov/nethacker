@@ -25,3 +25,6 @@ Evaluation variability: the same policy produced 40.59% in local validation,
 39.33% in its first submission evaluation, and approximately 40.67% in a repeat.
 These public results do not establish private-seed performance. The hub retains
 the first evaluation for an immutable commit. All trial records remain local.
+
+Final descent setting: prefer nearby stairs within three squares through depth
+11; use the original eight-square stair preference starting at depth 12.

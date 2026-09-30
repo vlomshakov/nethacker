@@ -118,7 +118,7 @@ STUCK_EXPLORE_TURNS = 4000     # searching for a hidden way down before trying o
 DIG_STAIRS_RADIUS = 8
 # Favor potentially multi-level dig holes over longer shallow stair walks.
 SHALLOW_DIG_STAIRS_RADIUS = 3
-SHALLOW_DIG_DEPTH_LIMIT = 10
+SHALLOW_DIG_DEPTH_LIMIT = 12
 # Dig before fighting: fight2 engages anything within 7 squares, but a hole takes a dwarf only 3-4 dig
 # steps and a monster interrupts the dig only once it attacks or first comes into view (monmove.c
 # disturb, mhitu.c): with no hostile within DIG_FIRST_RADIUS, keep digging out instead.
