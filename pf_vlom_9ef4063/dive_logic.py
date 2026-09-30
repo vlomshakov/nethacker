@@ -192,7 +192,7 @@ MEDUSA_REROLLS = 3
 # MEDUSA_SKIP (with DIG_ESCAPE): reroll from Medusa's level (also Medusa-3) once a dig there has flooded
 # MEDUSA_SKIP_FLOODS times or the best square has MEDUSA_REROLL_WET moat neighbours; each hole dug from the level
 # above skips Medusa's level 1 time in 4 (see _medusa_reroll_stairs)
-MEDUSA_SKIP = True
+MEDUSA_SKIP = False
 MEDUSA_SKIP_FLOODS = 1
 MEDUSA_SKIP_REROLLS = 8
 MEDUSA_SKIP_FIRST = False      # on Medusa-3 (ravens) reroll at once, before any dig, while the '<' is close
@@ -2606,8 +2606,6 @@ class DiveLogic:
         if self._in_own_pit() or (not on_stairs and self._diggable_spot(bl.y, bl.x, max_wet)) or \
                 (level.objects[bl.y, bl.x] in (SS.S_pit, SS.S_spiked_pit) and
                  self._wet_neighbours(bl.y, bl.x) <= max_wet):
-            if max_wet > 0 and wand is not None:
-                return ('zap', wand)
             if DROWN_GUARD and self._wet_neighbours(bl.y, bl.x) > 0:
                 # a flood here drowns us unless a free land square is next to us (drown -> crawl_destination):
                 # base3 lost 7 Medusa digs that way ('You sink like a rock', no crawl). Wait on Elbereth for the
@@ -2620,6 +2618,8 @@ class DiveLogic:
                 elif self._crawl_exits(bl.y, bl.x) < DROWN_GUARD_EXITS and \
                         agent.blstats.time - self._drown_wait_since(bl.y, bl.x) < DROWN_GUARD_WAIT:
                     return ('wait', None)
+            if max_wet > 0 and wand is not None:
+                return ('zap', wand)
             return ('dig', tool)
         # standing on stairs, in a doorway, on a wetter square (Medusa-3's island): walk to the nearest
         # square we can dig, a few steps at most
@@ -3834,7 +3834,7 @@ class DiveLogic:
         dis = agent.bfs()
         if not (DIG_ESCAPE and tool is not None and self._in_own_pit()):
             for d, _, _, kind in self.down_targets():
-                if kind == 'stairs' and d <= DIG_STAIRS_RADIUS:
+                if kind == 'stairs' and d <= (3 if agent.blstats.depth < 10 else DIG_STAIRS_RADIUS):
                     return False
         y, x = agent.blstats.y, agent.blstats.x
         candidates = utils.isin(level.objects, PLAIN_FLOOR) | ((level.objects == -1) & level.walkable)
@@ -3860,6 +3860,7 @@ class DiveLogic:
             if safe:
                 agent.go_to(*min(safe)[1])
                 return True
+            return False
         if (on_stairs or not self._diggable_spot(y, x, max_wet)) and not (DIG_ESCAPE and self._in_own_pit()):
             spots = [(dis[p], p) for p in floor if dis[p] > 0 and self._diggable_spot(*p, max_wet)]
             if not spots:

@@ -2800,6 +2800,20 @@ class Agent:
     @utils.debug_log('emergency_strategy')
     @Strategy.wrap
     def emergency_strategy(self):
+        # Raven blindness prevents reading engravings and safe dig escape.
+        # Extra/full healing also restores sight; ordinary unblessed healing does not.
+        if self.character.role == Character.HEALER and self.global_logic.dive.diving and \
+                self.blstats.depth >= 10 and self.character.prop.blind and \
+                not self.character.prop.polymorph and not self.astra_deep_blind_cure_due() and \
+                self.blstats.time - getattr(self, '_astra_blind_potion_turn', -100) >= 5:
+            cures = [i for i in self.inventory.items if i.is_unambiguous() and
+                     i.category == nh.POTION_CLASS and i.object.name in ('extra healing', 'full healing') and
+                     i.status != Item.CURSED and i.shop_status == Item.NOT_SHOP]
+            if cures:
+                yield True
+                self._astra_blind_potion_turn = self.blstats.time
+                self.inventory.quaff(min(cures, key=lambda i: i.object.name == 'full healing'))
+                return
         # Astra's health-first rule: heal before the next adjacent attack can
         # cross the old one-third-HP threshold. Potions are reliable in armor.
         if self.character.role == Character.HEALER and not self.character.prop.polymorph and \
