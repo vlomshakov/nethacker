@@ -116,6 +116,9 @@ STUCK_EXPLORE_TURNS = 4000     # searching for a hidden way down before trying o
 # on her level, walking into the water). A '>' this close is still taken (it keeps an up staircase
 # under us on arrival).
 DIG_STAIRS_RADIUS = 8
+# Favor potentially multi-level dig holes over longer shallow stair walks.
+SHALLOW_DIG_STAIRS_RADIUS = 3
+SHALLOW_DIG_DEPTH_LIMIT = 10
 # Dig before fighting: fight2 engages anything within 7 squares, but a hole takes a dwarf only 3-4 dig
 # steps and a monster interrupts the dig only once it attacks or first comes into view (monmove.c
 # disturb, mhitu.c): with no hostile within DIG_FIRST_RADIUS, keep digging out instead.
@@ -3834,7 +3837,7 @@ class DiveLogic:
         dis = agent.bfs()
         if not (DIG_ESCAPE and tool is not None and self._in_own_pit()):
             for d, _, _, kind in self.down_targets():
-                if kind == 'stairs' and d <= (3 if agent.blstats.depth < 10 else DIG_STAIRS_RADIUS):
+                if kind == 'stairs' and d <= (SHALLOW_DIG_STAIRS_RADIUS if agent.blstats.depth < SHALLOW_DIG_DEPTH_LIMIT else DIG_STAIRS_RADIUS):
                     return False
         y, x = agent.blstats.y, agent.blstats.x
         candidates = utils.isin(level.objects, PLAIN_FLOOR) | ((level.objects == -1) & level.walkable)
