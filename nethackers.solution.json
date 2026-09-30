@@ -1,6 +1,6 @@
 {
   "schema": "nethackers.solution/v1",
-  "name": "healer-fast-branch",
+  "name": "healer-human-fallback",
   "root": "pf_base",
   "parents": [
     "github.com/daglar-dragomirov/nethacker@a68e6f567722d0838d241ac2d6ca92b7a01d06ae"

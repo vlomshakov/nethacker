@@ -2817,9 +2817,15 @@ class Agent:
                        i.category == nh.POTION_CLASS and i.object.name in strength and
                        i.status != Item.CURSED and i.shop_status == Item.NOT_SHOP]
             if potions:
-                yield True
-                self.inventory.quaff(max(potions, key=lambda i: strength[i.object.name]))
-                return
+                # A milky potion can release a ghost and paralyze us before
+                # the healing applies. Avoid that gamble beside an attacker
+                # while a safer healing potion or defensive action remains.
+                safe = [i for i in potions if not (len(i.glyphs) == 1 and
+                        O.objects[i.glyphs[0] - nh.GLYPH_OBJ_OFF].desc == 'milky')]
+                if safe or self.blstats.hitpoints < max(8, self.blstats.max_hitpoints * 0.25):
+                    yield True
+                    self.inventory.quaff(max(safe or potions, key=lambda i: strength[i.object.name]))
+                    return
         if self.astra_deep_blind_cure_due():
             yield True
             self._astra_blind_cure_turn = self.blstats.time

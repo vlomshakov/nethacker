@@ -134,7 +134,9 @@ def _identity(observation):
     return f"{_ROLES[role]}-{_RACES[race]}-{_ALIGNS[align]}-{gender}"
 
 # role -> package when the race cannot be read (see build_ident.py)
-FALLBACK = {"hea": "pf_hg", "pri": "pf_pa"}
+# This submission targets human Healer games. Some welcome screens omit the
+# race entirely; choose the human policy when status alone identifies Healer.
+FALLBACK = {"hea": "pf_hh", "pri": "pf_pa"}
 _RE_ALIGN = re.compile(r"\b(Lawful|Neutral|Chaotic)\b")
 
 
