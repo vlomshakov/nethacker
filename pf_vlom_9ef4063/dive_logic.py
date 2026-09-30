@@ -1259,7 +1259,7 @@ class DiveLogic:
         # (not a Gehennom digger: see GEHENNOM_DIG_REST_BELOW)
         bl = agent.blstats
         digger = DIVE_REST and self._digger_here()
-        rest_below = DIG_REST_BELOW if digger else REST_BELOW
+        rest_below = (0.5 if agent.blstats.depth < 24 else DIG_REST_BELOW) if digger else REST_BELOW
         if bl.hitpoints < rest_below * bl.max_hitpoints and not agent.get_visible_monsters() and \
                 bl.hunger_state < Hunger.WEAK and not (digger and self._in_own_pit()) and \
                 not self._gehennom_digger():
@@ -2267,7 +2267,7 @@ class DiveLogic:
         digger = DIVE_REST and self.diving and self.digging_tool() is not None
         # a digger takes stairs like a hole: a deep rest to 95% at XL 8 (1 HP per 5 turns) lets the level's
         # monsters come (base-jf25 s13 rested 180 turns at a Dlvl 14 '>' and died there)
-        threshold = DIG_REST_BELOW if digger else REST_BEFORE_DESCEND
+        threshold = (0.5 if agent.blstats.depth < 24 else DIG_REST_BELOW) if digger else REST_BEFORE_DESCEND
         if agent.blstats.hitpoints >= threshold * agent.blstats.max_hitpoints:
             return False
         if digger and agent._hurt_recently(3):
@@ -3871,7 +3871,7 @@ class DiveLogic:
             agent.go_to(*min(spots)[1])
             return True
         if tool is not None:
-            rest_below = GEHENNOM_DIG_REST_BELOW if self.in_gehennom() else DIG_REST_BELOW
+            rest_below = GEHENNOM_DIG_REST_BELOW if self.in_gehennom() else (0.5 if agent.blstats.depth < 24 else DIG_REST_BELOW)
             if agent.blstats.hitpoints < rest_below * agent.blstats.max_hitpoints and \
                     not (DIVE_REST and self._in_own_pit()):
                 self._task('rest before digging')

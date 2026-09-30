@@ -31,3 +31,7 @@ Final descent setting: prefer nearby stairs within three squares through depth
 
 Blindness recovery also accepts positively identified blessed ordinary healing.
 Unblessed ordinary healing is excluded from this sight-restoration strategy.
+
+Rest policy: while digging, rest below 50% HP at depths under 24; restore the
+original 60% threshold from depth 24. Gehennom retains its own 30% threshold.
+This hybrid evaluated at 40.42599% mean progress across 15 public games.
