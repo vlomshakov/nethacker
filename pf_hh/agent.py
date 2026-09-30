@@ -2580,10 +2580,16 @@ class Agent:
         if self.blstats.time - getattr(self, '_astra_sleep_turn', -100) < 12:
             return None
         monsters = self.get_visible_monsters()
+        stalled_opener = (self.blstats.depth == 1 and self.blstats.experience_level <= 3 and
+                          self.blstats.time >= 2600)
         threats = [m for m in monsters if m[0] <= 3 and
                    hasattr(m[3], 'mlevel') and hasattr(m[3], 'mresists') and
                    (m[3].mname in ('wererat', 'werejackal', 'werewolf') or m[3].mlevel >= 3 or (m[3].mlevel >= 1 and
-                    self.blstats.hitpoints < self.blstats.max_hitpoints * 0.6)) and
+                    self.blstats.hitpoints < self.blstats.max_hitpoints * 0.6) or
+                    (stalled_opener and not self.has_pet and m[0] <= 2 and
+                     m[3].mlevel >= 1 and getattr(m[3], 'mmove', 0) > 0 and
+                     m[3].mname != 'gas spore' and
+                     self.blstats.hitpoints < self.blstats.max_hitpoints * 0.8)) and
                    not (m[3].mresists & 4)]  # MR_SLEEP from NetHack monflag.h
         if not threats:
             return None
